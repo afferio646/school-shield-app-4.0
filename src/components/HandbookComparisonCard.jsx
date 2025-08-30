@@ -1,21 +1,5 @@
-// --- src/components/HandbookComparisonCard.jsx ---
-
 import React, { useState } from 'react';
-
-// You will also need to copy the ExpandableOption helper component 
-// into this file or import it if it's in a separate helper file.
-function ExpandableOption({ title, children, startOpen = true }) {
-    const [open, setOpen] = useState(startOpen);
-    return (
-        <div className="border rounded-md p-4 shadow-sm my-2 bg-gray-800 border-gray-600">
-            <div className="font-semibold cursor-pointer hover:underline text-yellow-300" onClick={() => setOpen(!open)}>
-                {open ? '▼' : '▶'} {title}
-            </div>
-            {open && <div className="mt-2 space-y-2">{children}</div>}
-        </div>
-    );
-}
-
+import ExpandableOption from './ExpandableOption';
 
 export default function HandbookComparisonCard({ apiKey }) {
     const [selectedTopic, setSelectedTopic] = useState("");
@@ -23,8 +7,16 @@ export default function HandbookComparisonCard({ apiKey }) {
     const [analysisResult, setAnalysisResult] = useState(null);
     const [isSuggesting, setIsSuggesting] = useState(false);
     const [suggestedLanguage, setSuggestedLanguage] = useState(null);
+    const [openOptions, setOpenOptions] = useState({
+        ts: true,
+        h1: true,
+        h2: true
+    });
 
-    // --- ENHANCED: More detailed and robust data for comparison from uploaded handbooks ---
+    const handleOptionToggle = (key) => {
+        setOpenOptions(prev => ({...prev, [key]: !prev[key]}));
+    };
+
     const comparisonTopics = {
         socialMedia: {
             name: "Employee Social Media & Digital Conduct",
@@ -70,7 +62,7 @@ export default function HandbookComparisonCard({ apiKey }) {
         // Simulate API call
         setTimeout(() => {
             const topicData = comparisonTopics[selectedTopic];
-            setAnalysisResult(topicData); // The entire robust object is now the result
+            setAnalysisResult(topicData);
             setIsAnalyzing(false);
         }, 1000);
     };
@@ -121,34 +113,33 @@ export default function HandbookComparisonCard({ apiKey }) {
 
                 {analysisResult && (
                     <div className="mt-6 border-t border-gray-500 pt-4 space-y-4">
-                        <ExpandableOption title="Your Current Handbook (TS)">
+                        <ExpandableOption title="Your Current Handbook (TS)" isOpen={openOptions.ts} onToggle={() => handleOptionToggle('ts')}>
                              <p className="text-blue-200 p-3 rounded-md whitespace-pre-line bg-gray-900">{analysisResult.ts}</p>
                         </ExpandableOption>
-                        <ExpandableOption title="Handbook Comparison 1 (H1)">
+                        <ExpandableOption title="Handbook Comparison 1 (H1)" isOpen={openOptions.h1} onToggle={() => handleOptionToggle('h1')}>
                             <p className="text-black bg-white p-3 rounded-md whitespace-pre-line">{analysisResult.h1}</p>
                         </ExpandableOption>
-                        <ExpandableOption title="Handbook Comparison 2 (H2)">
+                        <ExpandableOption title="Handbook Comparison 2 (H2)" isOpen={openOptions.h2} onToggle={() => handleOptionToggle('h2')}>
                             <p className="text-black bg-white p-3 rounded-md whitespace-pre-line">{analysisResult.h2}</p>
                         </ExpandableOption>
                         
-                        {/* --- NEW: Displaying Robust Analysis --- */}
                         <div className="p-4 rounded-md bg-green-900 bg-opacity-40 border border-green-500">
                              <h4 className="font-bold text-lg text-green-300 mb-2">AI Analysis & Recommendations</h4>
                              <div className="space-y-3 text-white">
-                                <p><strong>Policy Gap:</strong> {analysisResult.analysis.gap}</p>
-                                <p><strong>Potential Risk:</strong> {analysisResult.analysis.risk}</p>
-                                <p><strong>Industry Benchmark:</strong> {analysisResult.analysis.benchmark}</p>
-                                <div className="border-t border-green-700 mt-3 pt-3">
-                                    <h5 className="font-semibold text-green-200">Action Plan:</h5>
-                                    <ul className="list-disc list-inside ml-2 mt-1 space-y-1">
-                                        {analysisResult.recommendations.map((rec, i) => <li key={i}>{rec}</li>)}
-                                    </ul>
-                                </div>
+                                 <p><strong>Policy Gap:</strong> {analysisResult.analysis.gap}</p>
+                                 <p><strong>Potential Risk:</strong> {analysisResult.analysis.risk}</p>
+                                 <p><strong>Industry Benchmark:</strong> {analysisResult.analysis.benchmark}</p>
+                                 <div className="border-t border-green-700 mt-3 pt-3">
+                                     <h5 className="font-semibold text-green-200">Action Plan:</h5>
+                                     <ul className="list-disc list-inside ml-2 mt-1 space-y-1">
+                                         {analysisResult.recommendations.map((rec, i) => <li key={i}>{rec}</li>)}
+                                     </ul>
+                                 </div>
                              </div>
                              {!suggestedLanguage && (
                                  <div className="mt-4">
                                      <button className="bg-blue-600 text-white font-semibold px-5 py-2 rounded-lg shadow hover:bg-blue-700" onClick={handleSuggestChange} disabled={isSuggesting}>
-                                         {isSuggesting ? "Generating..." : "Generate Suggested Language"}
+                                          {isSuggesting ? "Generating..." : "Generate Suggested Language"}
                                      </button>
                                  </div>
                              )}
@@ -171,4 +162,3 @@ export default function HandbookComparisonCard({ apiKey }) {
         </div>
     );
 }
-
