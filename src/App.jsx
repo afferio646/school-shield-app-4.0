@@ -1,19 +1,16 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Bell, BookOpen, Shield, AlertCircle, TrendingUp, MessageCircle, Gavel, ChevronLeft, ChevronRight, Calendar, X, Archive, ExternalLink, Search } from "lucide-react";
-// import { initializeApp } from 'firebase/app';
-// import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-// import { getFirestore, collection, addDoc, query, onSnapshot, serverTimestamp, orderBy } from 'firebase/firestore';
 
-// Import the extracted components
+// --- COMPONENT IMPORTS ---
+// Paths are set to the components subfolder as per your project structure.
 import HandbookComparisonCard from './components/HandbookComparisonCard.jsx';
 import LegalReferenceJournal from './components/LegalReferenceJournal.jsx';
 import ExpandableOption from './components/ExpandableOption.jsx';
 
-
 // --- SECURE API KEY HANDLING ---
-// IMPORTANT: Replace "YOUR_API_KEY_HERE" with your actual Google AI API key
-const GEMINI_API_KEY = "AIzaSyCYAfKVJ9BTLWHpNLDr0bHDsvYOdWMfIpw";
-
+// This now reads the API key from an environment variable.
+// Make sure to set this up in your Vercel deployment settings.
+const GEMINI_API_KEY = process.env.REACT_APP_GEMINI_API_KEY;
 
 // --- Helper Components ---
 
@@ -30,10 +27,10 @@ function SectionHeader({ icon, title, children }) {
 // --- Handbook Section Link Component ---
 function SectionLink({ number, onLinkClick, children }) {
     return (
-        <button 
+        <button
             className="text-blue-300 underline hover:text-blue-200 font-bold focus:outline-none inline"
             onClick={(e) => {
-                e.stopPropagation();
+                e.stopPropagation(); // Prevent parent click events
                 onLinkClick(number);
             }}
         >
@@ -47,12 +44,12 @@ function AIContentRenderer({ content, onSectionLinkClick, onLegalLinkClick, open
     const renderTextWithLinks = (text) => {
         if (typeof text !== 'string') return text;
 
-        const sectionRegex = /(Section\s\d+(?:\.\d+)?)/g;
-        const caseLawRegex = /(\*[^*]+\sv\.\s[^*]+\*)/g;
-        const boldRegex = /(\*\*.*?\*\*)/g;
-        
+        const sectionRegex = /(Section\s\d+(?:\.\d+)?)/;
+        const caseLawRegex = /(\*[^*]+\sv\.\s[^*]+\*)/;
+        const boldRegex = /(\*\*.*?\*\*)/;
+
         const combinedRegex = new RegExp(`(${sectionRegex.source}|${caseLawRegex.source}|${boldRegex.source})`, 'g');
-        
+
         const parts = text.split(combinedRegex).filter(Boolean);
 
         return parts.map((part, i) => {
@@ -100,7 +97,7 @@ function AIContentRenderer({ content, onSectionLinkClick, onLegalLinkClick, open
                  <>
                     {children.map((child, index) => {
                          if (child.type === ExpandableOption) {
-                             const optionKey = `option${String.fromCharCode(65 + index)}`; 
+                             const optionKey = `option${String.fromCharCode(65 + index)}`;
                              return React.cloneElement(child, {
                                  key: optionKey,
                                  isOpen: !!openOptions[optionKey],
@@ -159,29 +156,29 @@ function AIContentRenderer({ content, onSectionLinkClick, onLegalLinkClick, open
              return (
                 <div className="text-white">
                     {Object.entries(content).map(([key, option]) => (
-                         <ExpandableOption 
-                            key={key} 
+                         <ExpandableOption
+                            key={key}
                             title={option.title}
                             isOpen={!!openOptions[key]}
                             onToggle={() => onOptionToggle(key)}
                          >
-                            <AIContentRenderer 
-                                content={option} 
-                                onSectionLinkClick={onSectionLinkClick} 
-                                onLegalLinkClick={onLegalLinkClick} 
+                            <AIContentRenderer
+                                content={option}
+                                onSectionLinkClick={onSectionLinkClick}
+                                onLegalLinkClick={onLegalLinkClick}
                             />
                         </ExpandableOption>
                     ))}
                 </div>
             );
         }
-        
+
         return (
             <div className="space-y-3 text-white">
                 {Object.entries(content).map(([prop, val]) => {
                     if (prop === 'title') return null;
                     const formattedProp = prop.charAt(0).toUpperCase() + prop.slice(1).replace(/([A-Z])/g, ' $1');
-                    
+
                     if (prop === 'suggestedLanguage') {
                         return (
                             <div key={prop} className="mt-2">
@@ -202,7 +199,7 @@ function AIContentRenderer({ content, onSectionLinkClick, onLegalLinkClick, open
             </div>
         );
     }
-    
+
     const lines = String(content).split('\n').filter(line => line.trim() !== '');
     return (
         <div className="text-white space-y-2">
@@ -210,6 +207,7 @@ function AIContentRenderer({ content, onSectionLinkClick, onLegalLinkClick, open
         </div>
     );
 }
+
 
 // --- Handbook Section Modal ---
 function HandbookSectionModal({ section, onClose }) {
@@ -257,13 +255,13 @@ function HandbookVulnerabilitiesCard({ sections, onSectionLinkClick }) {
                     <p>Unlike static annual reviews, this system provides ongoing protection by instantly flagging policy gaps, regulatory changes, and compliance risks as they develop.</p>
                 </div>
                 <div className="mt-6">
-                    <button 
+                    <button
                         className="bg-blue-700 text-white font-semibold px-5 py-2 rounded-lg shadow hover:bg-blue-800 w-full mb-2"
                         onClick={() => setIsVulnerabilitiesRevealed(!isVulnerabilitiesRevealed)}
                     >
                         {isVulnerabilitiesRevealed ? "Close Vulnerabilities" : "Show All Vulnerabilities"}
                     </button>
-                    <button 
+                    <button
                         className="bg-blue-700 text-white font-semibold px-5 py-2 rounded-lg shadow hover:bg-blue-800 w-full"
                         onClick={() => setIsMonitoringSystemRevealed(!isMonitoringSystemRevealed)}
                     >
@@ -404,7 +402,7 @@ function HandbookAuditCard() {
                         </button>
                     </div>
                     <div className="mt-4">
-                         <button 
+                         <button
                             className="bg-blue-700 text-white font-semibold px-5 py-2 rounded-lg shadow hover:bg-blue-800"
                             onClick={() => setIsProcessRevealed(!isProcessRevealed)}
                         >
@@ -428,22 +426,30 @@ function HandbookAuditCard() {
     );
 }
 
-​// --- Report Viewer Modal Component ---
+// --- Report Viewer Modal Component ---
 const ReportViewerModal = React.memo(function ReportViewerModal({ report, scenarios, onClose, onSectionLinkClick, onLegalLinkClick }) {
     if (!report) return null;
 
+    const [openOptions, setOpenOptions] = React.useState({});
+    const handleOptionToggle = useCallback((stepKey, optionKey) => {
+        const fullKey = `${stepKey}-${optionKey}`;
+        setOpenOptions(prev => ({ ...prev, [fullKey]: !prev[fullKey] }));
+    }, []);
+
+
     const reportData = scenarios[report.scenarioKey];
 
-    // FIX: Add defensive check to prevent crash
     if (!reportData) {
         return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4">
-                <div className="bg-gray-900 p-6 rounded-2xl shadow-2xl max-w-lg w-full">
-                     <h2 className="text-2xl font-bold text-red-400">Error</h2>
-                     <p className="text-white mt-4">Could not load the report data for scenario key: "{report.scenarioKey}".</p>
-                     <button onClick={onClose} className="mt-6 bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg">Close</button>
-                </div>
-            </div>
+             <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-60 p-4">
+                 <div className="bg-gray-900 p-6 rounded-2xl shadow-2xl max-w-lg w-full text-white">
+                     <div className="flex justify-between items-center mb-4">
+                        <h2 className="text-2xl font-bold text-red-400">Report Error</h2>
+                         <button onClick={onClose} className="text-gray-400 hover:text-white"><X size={24} /></button>
+                     </div>
+                     <p className="mt-4">Could not load the report data for "{report.title}". The associated scenario key "{report.scenarioKey}" could not be found.</p>
+                 </div>
+             </div>
         );
     }
 
@@ -479,7 +485,19 @@ const ReportViewerModal = React.memo(function ReportViewerModal({ report, scenar
                         </div>
                         {Object.keys(reportData).filter(k => k.startsWith('step')).map(stepKey => (
                             <StepDetail key={stepKey} stepKey={stepKey} title={reportData[stepKey].title}>
-                                <AIContentRenderer content={reportData[stepKey].content} onSectionLinkClick={onSectionLinkClick} onLegalLinkClick={onLegalLinkClick} />
+                                 <AIContentRenderer
+                                    content={reportData[stepKey].content}
+                                    onSectionLinkClick={onSectionLinkClick}
+                                    onLegalLinkClick={onLegalLinkClick}
+                                    openOptions={
+                                        Object.fromEntries(
+                                            Object.entries(openOptions)
+                                            .filter(([k]) => k.startsWith(stepKey))
+                                            .map(([k, v]) => [k.split('-')[1], v])
+                                        )
+                                    }
+                                    onOptionToggle={(optionKey) => handleOptionToggle(stepKey, optionKey)}
+                                />
                             </StepDetail>
                           ))}
                     </div>
@@ -517,7 +535,7 @@ function ArchivedReportsCard({ reports, onViewReport }) {
                                 key={report.id}
                                 className="p-3 bg-gray-700 rounded-lg flex items-center justify-between"
                             >
-                                <div 
+                                <div
                                     className="flex-grow cursor-pointer"
                                     onClick={() => onViewReport(report)}
                                 >
@@ -543,14 +561,14 @@ function ArchivedReportsCard({ reports, onViewReport }) {
 // --- Page Components ---
 
 // --- Risk Assessment & Mitigation Center Component --- //
-function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, onSectionLinkClick, onLegalLinkClick, queryHistory, setQueryHistory, db, userId }) {
+function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, onSectionLinkClick, onLegalLinkClick }) {
     const [issue, setIssue] = useState("");
     const [responseGenerated, setResponseGenerated] = useState(false);
     const [loading, setLoading] = useState(false);
     const [activeLoader, setActiveLoader] = useState(null);
     const [viewMode, setViewMode] = useState('form');
     const [selectedScenarioKey, setSelectedScenarioKey] = useState(null);
-    const [openSteps, setOpenSteps] = useState({}); 
+    const [openSteps, setOpenSteps] = useState({});
     const [openSubOptions, setOpenSubOptions] = useState({});
     const [archivedReports, setArchivedReports] = useState([
         { id: 1, title: "Parent complaint about unfair suspension without notice", date: "August 12, 2025", scenarioKey: 'parentComplaint', issue: "Parent complaint about unfair suspension without notice" },
@@ -587,8 +605,8 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
             ]},
             step4: { title: "Administrator Response Options", content: <> <ExpandableOption title="Option A – Supportive & Investigative"> <p>“We are actively reviewing this matter to ensure all disciplinary steps align with our handbook. We appreciate your patience and will provide a full review soon.”</p> <p><strong>Policy Match:</strong> <SectionLink number="3.4" onLinkClick={onSectionLinkClick} /> – Disciplinary Action Policy</p> <p><strong>Risk Score:</strong> Low</p> <p><strong>Legal Reference:</strong> *Smith v. Westbrook Charter (2020)*, courts emphasized that prompt review and acknowledgment of parental concerns significantly reduced liability exposure.</p> <p><strong>Recommendation:</strong> Proceed. No legal escalation needed.</p> </ExpandableOption> <ExpandableOption title="Option B – Procedural + Soft Acknowledgment"> <p>“Our current disciplinary policy allows administrative discretion. While no violation occurred, we recognize communication could be improved.”</p> <p><strong>Policy Match:</strong> <SectionLink number="3.4" onLinkClick={onSectionLinkClick} /> – Disciplinary Action Policy</p> <p><strong>Risk Score:</strong> Moderate</p> <p><strong>Legal Reference:</strong> *Mason v. Eastside Prep (2021)*, ambiguity in school policy and failure to proactively address parent concerns resulted in the issue escalating to the board and gaining media attention.</p> <p><strong>Recommendation:</strong> Use cautiously. Consider offering a follow-up to reduce friction.</p> </ExpandableOption> <ExpandableOption title="Option C – Firm & Final"> <p>“The suspension followed established policy and is final. No further action is required by the school.”</p> <p><strong>Policy Match:</strong> <SectionLink number="3.4" onLinkClick={onSectionLinkClick} /> – General Interpretation</p> <p><strong>Risk Score:</strong> High</p> <p><strong>Legal Reference:</strong> *Parent v. Beacon Hill Christian (2020)*, a rigid response without acknowledgment of parental concern resulted in negative publicity and a costly settlement due to failure to follow communication best practices.</p> <p><strong>Recommendation:</strong> Not advised. May escalate tensions and introduce legal or reputational risk.</p> </ExpandableOption> </> },
             step5: { title: "Projected Complainant Reactions", content: <> <ExpandableOption title="Option A"> <p><strong>Likely Response:</strong> Parent appreciates the acknowledgment and feels heard. May request a brief meeting for clarity, but escalation is unlikely.</p> <p><strong>School Risk:</strong> Low – Positive tone and willingness to investigate usually results in resolution without further action.</p> <p><strong>Legal Reference:</strong> *Doe v. Heritage Academy (2019)* – School protected after showing procedural review in response to parental concern.</p> </ExpandableOption> <ExpandableOption title="Option B"> <p><strong>Likely Response:</strong> Parent feels partially heard but remains concerned. May request documentation or a policy review meeting. Possible follow-up to school board.</p> <p><strong>School Risk:</strong> Moderate – While language is neutral, absence of apology or proactive follow-up could be perceived as dismissive. Reputation risk increases with repeat complaints.</p> <p><strong>Legal Reference:</strong> *Mason v. Eastside Prep (2021)* – Lack of communication clarity contributed to prolonged parent conflict and board involvement.</p> </ExpandableOption> <ExpandableOption title="Option C"> <p><strong>Likely Response:</strong> Parent views this as stonewalling. Likely to escalate to school board or external legal advisory. May take issue to social media or local press, claiming rights were ignored.</p> <p><strong>School Risk:</strong> High – This tone invites resistance, lacks empathy, and contradicts best practices for early-stage resolution. Serious PR and legal exposure possible.</p> <p><strong>Legal Reference:</strong> *Parent v. Beacon Hill Christian (2020)* – Firm denial without engagement led to settlement due to public backlash and lack of documentation.</p> </ExpandableOption> </> },
-            step6: { 
-                title: "Final Recommendation & Action Plan", 
+            step6: {
+                title: "Final Recommendation & Action Plan",
                 content: {
                     recommendationSummary: `**Recommended Option:** Option A\n**Why:** Demonstrates due diligence, protects school reputation, and aligns with a restorative tone. Legal precedent supports early review and acknowledgment of parental concerns.\n**Confidence Level:** High\n**Legal Review Advised:** Not required unless the parent submits a formal complaint or legal threat.`,
                     implementationSteps: [
@@ -618,8 +636,9 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
             ]},
             step4: { title: "Administrator Response Options", content: <> <ExpandableOption title="Option A – Firm, Policy-Based, & Supportive"> <p>“Thank you for your inquiry. Per our employee handbook (<SectionLink number="5" onLinkClick={onSectionLinkClick}>Section 5</SectionLink>), sick leave is designated for illness and other specified emergencies and is not convertible to vacation time. Additionally, the handbook states that unused sick leave is not paid out upon separation (<SectionLink number="4.3" onLinkClick={onSectionLinkClick} />). We can, however, schedule a meeting to discuss your final pay and benefits transition to ensure a smooth departure.”</p> <p><strong>Policy Match:</strong> <SectionLink number="4.3" onLinkClick={onSectionLinkClick} />, <SectionLink number="5" onLinkClick={onSectionLinkClick}>Section 5</SectionLink></p> <p><strong>Risk Score:</strong> Low</p> <p><strong>Legal Reference:</strong> *Johnson v. Independent School District No. 4*, where courts upheld an employer's right to enforce clear, written leave policies, especially when distinguishing between sick and vacation leave. Emphasizes the importance of consistent policy application.</p> <p><strong>Recommendation:</strong> Proceed. This is the most direct and legally sound approach.</p> </ExpandableOption> <ExpandableOption title="Option B – Accommodating / Exception-Based"> <p>“While our policy doesn't typically allow for this, we can make an exception in this case and allow you to use a portion of your sick leave before your departure.”</p> <p><strong>Policy Match:</strong> N/A - Contradicts policy</p> <p><strong>Risk Score:</strong> High</p> <p><strong>Legal Reference:</strong> *Davis v. Charter School Partners*, where making an exception for one employee created a precedent that the school was later forced to honor for others, leading to significant unplanned costs. Inconsistent policy application creates risk of discrimination claims.</p> <p><strong>Recommendation:</strong> Not advised. Creates a dangerous precedent and undermines the handbook.</p> </ExpandableOption> <ExpandableOption title="Option C – Vague & Deferring"> <p>“We will need to review your request with the business office and will get back to you at a later date.”</p> <p><strong>Policy Match:</strong> N/A</p> <p><strong>Risk Score:</strong> Moderate</p> <p><strong>Legal Reference:</strong> In *Chen v. Academy of Arts*, delaying a clear answer on a separation-related matter was interpreted as evasive, increasing employee frustration and contributing to a constructive discharge claim (though ultimately unsuccessful, it was costly to defend).</p> <p><strong>Recommendation:</strong> Not advised. Delays a clear answer and can create false hope, leading to more frustration.</p> </ExpandableOption> </> },
             step5: { title: "Projected Complainant Reactions", content: <> <ExpandableOption title="Option A"> <p><strong>Likely Response:</strong> Employee may be disappointed but understands the decision is based on established policy, not personal animus. Escalation is unlikely as the policy is clear.</p> <p><strong>School Risk:</strong> Low – The decision is defensible and based on consistent application of written policy.</p> </ExpandableOption> <ExpandableOption title="Option B"> <p><strong>Likely Response:</strong> Employee is satisfied. However, this may create morale issues with other staff who were not granted similar exceptions. Sets a precedent for future requests upon separation.</p> <p><strong>School Risk:</strong> High – Future employees could claim discrimination if not offered the same benefit, undermining the handbook.</p> </ExpandableOption> <ExpandableOption title="Option C"> <p><strong>Likely Response:</strong> Employee becomes anxious and frustrated by the delay. May begin to feel they are being treated unfairly, increasing the likelihood of consulting legal counsel or complaining to other staff.</p> <p><strong>School Risk:</strong> Moderate – The ambiguity and delay can be perceived as weakness or unfair treatment, potentially escalating the situation.</p> </ExpandableOption> </> },
-            step6: { 
-                title: "Final Recommendation & Action Plan", 
+            // FIXED: Added the missing comma that was causing the syntax error.
+            step6: {
+                title: "Final Recommendation & Action Plan",
                 content: {
                     recommendationSummary: `**Recommended Option:** Option A\n**Why:** It is clear, consistent, and directly supported by the employee handbook. It respects the employee by providing a direct answer while protecting the school from the significant risks of inconsistent policy application.\n**Confidence Level:** High\n**Legal Review Advised:** Not required unless the employee threatens legal action or alleges the policy is being applied in a discriminatory manner.`,
                     implementationSteps: [
@@ -643,11 +662,10 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
         setViewMode('demo');
         setSelectedScenarioKey(scenarioKey);
     };
-    
-    ​// FIX: Restored full API call logic
+
     const handleGenerate = async (isUpdate = false) => {
         if (!issue) return;
-       
+
         setLoading(true);
         setActiveLoader(isUpdate ? 'update' : 'new');
         if (!isUpdate) {
@@ -671,9 +689,9 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
             return;
         }
 
-        ​setViewMode('live');
-        if (!apiKey || apiKey === "YOUR_API_KEY_HERE") {
-            setGeneratedSteps({ error: "Please provide a valid API key in the App.jsx file." });
+        setViewMode('live');
+        if (!apiKey) {
+            setGeneratedSteps({ error: "API key is not configured. Please set the REACT_APP_GEMINI_API_KEY environment variable." });
             setResponseGenerated(true);
             setLoading(false);
             setActiveLoader(null);
@@ -807,7 +825,6 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
         }
     };
 
-
     const handleStepToggle = (stepKey) => {
         const isOpening = !openSteps[stepKey];
         setOpenSteps(prev => ({ ...prev, [stepKey]: !prev[stepKey] }));
@@ -821,14 +838,14 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
             }, 300);
         }
     };
-    
+
     const handleCloseAnalysis = () => {
         setResponseGenerated(false);
         setGeneratedSteps(null);
         setIssue("");
         setSelectedScenarioKey(null);
         setOpenSteps({});
-        setOpenSubOptions({});
+        setOpenSubOptions({}); // Reset sub-option memory
     };
 
     const StepCard = React.memo(React.forwardRef(function StepCard({ title, stepKey, children, isOpen, onToggle, onLegalLinkClick, onSectionLinkClick, openSubOptions, onSubOptionToggle }, ref) {
@@ -842,7 +859,7 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
                 setTimeout(() => {
                     setIsAnalyzing(false);
                     onToggle();
-                }, 750); 
+                }, 750);
             }
         };
 
@@ -851,9 +868,9 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
 
         const renderContent = () => {
              return (
-                 <AIContentRenderer 
-                    content={children} 
-                    onSectionLinkClick={onSectionLinkClick} 
+                 <AIContentRenderer
+                    content={children}
+                    onSectionLinkClick={onSectionLinkClick}
                     onLegalLinkClick={onLegalLinkClick}
                     openOptions={
                         Object.fromEntries(
@@ -872,17 +889,17 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
                 <div className="shadow-2xl border-0 rounded-2xl" style={{ background: "#4B5C64" }}>
                     <div className="p-6 space-y-4 rounded-2xl" style={{ color: "#fff" }}>
                         <h2 className="text-xl font-semibold" style={{ color: "#faecc4" }}>{`Step ${stepNumber}: ${title}`}</h2>
-                        
+
                         {isOpen && (
                              <div className="border-t border-gray-600 pt-4">
                                  {renderContent()}
                                  {stepKey === 'step6' && (
-                                     <div className="border-t border-gray-600 mt-6 pt-6"> 
-                                         <h3 className="text-lg font-semibold text-[#faecc4] mb-2 flex items-center"><Gavel className="w-5 h-5 mr-2"/>Get Direct Legal Help</h3> 
-                                         <div className="mb-3 text-sm"> Reach out for legal advice about this issue. Begin by adding a brief overview below, and click submit to schedule a phone conference.<br /> <span className="text-blue-400 text-xs">(Annual Legal Counsel Credits will be applied if applicable.)</span> </div> 
-                                         <textarea className="w-full min-h-[100px] border rounded-md mb-2 p-2 text-black" placeholder={`Add any additional details for the legal team regarding: "${issue}"`} style={{ background: "#fff", border: "2px solid #faecc4" }} /> 
-                                         <button className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-lg mt-2" > Submit &amp; Schedule Call </button> 
-                                     </div> 
+                                     <div className="border-t border-gray-600 mt-6 pt-6">
+                                         <h3 className="text-lg font-semibold text-[#faecc4] mb-2 flex items-center"><Gavel className="w-5 h-5 mr-2"/>Get Direct Legal Help</h3>
+                                         <div className="mb-3 text-sm"> Reach out for legal advice about this issue. Begin by adding a brief overview below, and click submit to schedule a phone conference.<br /> <span className="text-blue-400 text-xs">(Annual Legal Counsel Credits will be applied if applicable.)</span> </div>
+                                         <textarea className="w-full min-h-[100px] border rounded-md mb-2 p-2 text-black" placeholder={`Add any additional details for the legal team regarding: "${issue}"`} style={{ background: "#fff", border: "2px solid #faecc4" }} />
+                                         <button className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-6 py-2 rounded-lg mt-2" > Submit &amp; Schedule Call </button>
+                                     </div>
                                  )}
                              </div>
                         )}
@@ -901,7 +918,7 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
             </div>
         );
     }));
-    
+
     useEffect(() => {
         setIssue("");
         setResponseGenerated(false);
@@ -910,13 +927,13 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
         setViewMode('form');
         setSelectedScenarioKey(null);
         setOpenSteps({});
-        setOpenSubOptions({});
+        setOpenSubOptions({}); // Reset sub-option memory
     }, []);
 
     return (
         <div className="p-6 space-y-6 max-w-6xl mx-auto text-base">
             <h1 className="text-3xl font-bold text-center">IQ Risk Assessment Center</h1>
-            
+
             <div className="flex justify-center gap-2 mb-4">
                 <button onClick={() => handleScenarioButtonClick('parentComplaint')} className={`px-4 py-2 rounded-md ${selectedScenarioKey === 'parentComplaint' ? 'bg-blue-700 text-white' : 'bg-gray-300 text-black'}`}>Parent Complaint Demo</button>
                 <button onClick={() => handleScenarioButtonClick('facultyLeave')} className={`px-4 py-2 rounded-md ${selectedScenarioKey === 'facultyLeave' ? 'bg-blue-700 text-white' : 'bg-gray-300 text-black'}`}>Faculty Leave Demo</button>
@@ -940,18 +957,6 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
                             setViewMode('live');
                         }}
                     />
-                    <div className="mt-2">
-                       <label className="block font-medium text-sm mb-1">Saved Searches</label>
-                       <select
-                         className="w-full p-2 rounded-md text-black border-2 border-gray-300"
-                         onChange={(e) => { if(e.target.value) console.log("Selected query:", e.target.value); }}
-                         value=""
-                       >
-                         <option value="">Select a past query to load...</option>
-                         <option value="Parent complaint about unfair suspension without notice">Parent complaint about unfair suspension...</option>
-                         <option value="Non-renewed faculty member wants to use sick days as vacation before departure.">Non-renewed faculty member wants to use sick days...</option>
-                       </select>
-                    </div>
 
                     <div className="flex justify-center gap-4 mt-4">
                         {responseGenerated ? (
@@ -999,10 +1004,10 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
                     ) : (
                         Object.keys(generatedSteps).map((stepKey) => (
                             generatedSteps[stepKey] && generatedSteps[stepKey].title && (
-                                <StepCard 
+                                <StepCard
                                     ref={el => stepRefs.current[stepKey] = el}
-                                    key={stepKey} 
-                                    stepKey={stepKey} 
+                                    key={stepKey}
+                                    stepKey={stepKey}
                                     title={generatedSteps[stepKey].title}
                                     isOpen={!!openSteps[stepKey]}
                                     onToggle={() => handleStepToggle(stepKey)}
@@ -1033,42 +1038,44 @@ function IndustryQuestionsCard() {
     const [revealedAnswers, setRevealedAnswers] = useState({});
 
     const topics = [
-        "All", 
-        "Human Resources", 
-        "Student, Parent & Faculty Handbook Policy Questions", 
+        "All",
+        "Human Resources",
+        "Student, Parent & Faculty Handbook Policy Questions",
         "Governance and Board Topics"
     ];
 
     const industryQuestions = [
-        { id: 1, category: 'Human Resources', question: 'Has anyone hired an international teacher with U.S. work authorization?', answer: `Solution: Schools often use H-1B visas for specialty occupations. It requires demonstrating the role needs a specific degree. Consult an immigration attorney to navigate the sponsorship process, including LCA filing and USCIS petitions.` },
-        { id: 2, category: 'Human Resources', question: 'Do you allow flexible or remote summer work for employees? Any sample policies?', answer: `Solution: Yes, many schools offer this. A good policy defines eligibility (e.g., role, performance), expectations for availability and communication, and technology/security requirements. Specify if it's fully remote or hybrid.` },
-        { id: 3, category: 'Human Resources', question: 'Do you offer extended care (before/after school), and what discounts do faculty/staff receive?', answer: `Solution: Most schools with extended care offer a significant discount (50-100%) to faculty and staff as a key benefit, though it may be a taxable fringe benefit depending on the discount amount.` },
-        { id: 4, category: 'Human Resources', question: 'Does your gift agreement include a clause allowing revocation due to a donor’s misconduct?', answer: `Solution: Yes, this is increasingly common. A "morals clause" or "reputational harm" clause allows the school to return a gift and remove naming rights if a donor's actions harm the institution's reputation.` },
-        { id: 5, category: 'Human Resources', question: 'What’s your spending threshold for requiring Board/Finance Committee approval?', answer: `Solution: This varies by budget size. A common model is: Head of School has discretion up to $X (e.g., $25,000), Finance Committee approval required up to $Y (e.g., $100,000), and full Board approval for anything above.` },
-        { id: 6, category: 'Human Resources', question: 'Do you have RFP or bid requirements for selecting vendors or contractors?', answer: `Solution: A policy requiring multiple bids (e.g., three) for purchases over a certain threshold (e.g., $10,000) ensures fiscal responsibility and transparency.` },
-        { id: 7, category: 'Human Resources', question: 'Do you collect student or parent feedback in teacher evaluations?', answer: `Solution: Yes, using confidential, structured surveys (e.g., through SurveyMonkey) can provide valuable feedback for professional growth. It should be one of multiple data points in an evaluation.` },
-        { id: 8, category: 'Human Resources', question: 'Are librarians paid on the teacher salary scale or a different structure?', answer: `Solution: It varies. If the librarian holds a teaching degree and has instructional duties, they are often on the teacher scale. If the role is purely administrative, a separate staff scale may be used.` },
-        { id: 9, category: 'Human Resources', question: 'Does your school have ICE protocols or immigration enforcement policies?', answer: `Solution: Schools should have a policy directing all such inquiries to the Head of School, and staff should be trained not to provide information or grant access without the Head's explicit permission and legal counsel's advice.` },
-        { id: 10, category: 'Human Resources', question: 'Can anyone share their maternity/paternity leave policies?', answer: `Solution: A typical independent school policy offers 6-8 weeks of paid leave (often through short-term disability) and allows for the use of accrued sick/personal time. FMLA provides up to 12 weeks of unpaid, job-protected leave.` },
-        { id: 11, category: 'Human Resources', question: 'How do you handle political or cause-based student attire (e.g., BLM, Free Palestine, rainbow pins)?', answer: `Solution: The policy should focus on disruption. If the attire does not disrupt the educational environment, it is generally protected speech. However, schools can prohibit hate speech or symbols that cause significant disruption.` },
-        { id: 12, category: 'Human Resources', question: 'How do you approach compensation when 12-month admin salaries seem lower per month than 10-month teacher salaries?', answer: `Solution: This requires transparent communication about how salaries are calculated (e.g., daily rate vs. annual salary) and ensuring that administrative roles are benchmarked against comparable 12-month positions in the market.` },
-        { id: 13, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'How should we handle consequences for a student caught stealing multiple valuable items, including apology expectations?', answer: `Solution: A multi-faceted approach is best: suspension, restitution for stolen items, and a restorative justice component, such as a mediated apology to the victims to ensure it's sincere and educational.` },
-        { id: 14, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Does anyone have a strong school refusal policy to share?', answer: `Solution: A strong policy involves a collaborative approach: require medical documentation for absences, create a tiered intervention plan with counselors and admin, and define when the situation becomes a truancy issue requiring state reporting.` },
-        { id: 15, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'How do you authorize host families to act as legal guardians for international students?', answer: `Solution: This requires a formal, notarized document from the student's parents, often called a "Power of Attorney for Care of a Minor," granting the host family authority for medical and educational decisions.` },
-        { id: 16, category: 'Student, Parent & Faculty Handbook Policy Questions', question: "How should we approach a report that a student sent explicit images to an adult (prior to a school trip)?", answer: `Solution: Immediate action is critical. The student should be removed from the trip pending an investigation. The school must follow its child protection policy, which includes reporting the incident to the appropriate authorities (e.g., child protective services).` },
-        { id: 17, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Do you have policy language about students distributing inappropriate photos on school devices?', answer: `Solution: Your Acceptable Use Policy should explicitly prohibit the creation or distribution of obscene, defamatory, or inappropriate content, with clear consequences such as suspension and loss of technology privileges.` },
-        { id: 18, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Should we allow a parent-owned business to charge for services at a school event? How do we maintain fairness?', answer: `Solution: To avoid conflicts of interest, the best practice is to have a policy that either prohibits this or requires a formal, transparent bidding process (RFP) for all vendors, regardless of their connection to the school.` },
-        { id: 19, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'What policies exist around payout or acknowledgment for long-unused sick time for administrators?', answer: `Solution: Some schools cap the accrual of sick time. Others offer a partial payout upon retirement (e.g., a percentage of the value) or convert it to service credit for retirement benefits, but this is becoming less common.` },
-        { id: 20, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Has anyone transitioned to uniforms for Grades 1–8? Tips for change management and parent communication?', answer: `Solution: Successful transitions involve a long lead time (12-18 months), forming a parent/faculty committee to select options, holding town halls to address concerns, and phasing in the requirement over a school year.` },
-        { id: 21, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'If a student withdraws due to medical issues and doesn’t enroll elsewhere, do we have truancy reporting obligations?', answer: `Solution: Yes, if the student is of compulsory school age, you are likely required to report the withdrawal to the local school district to ensure the student is not considered truant. Check your state's specific reporting requirements.` },
-        { id: 22, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'How do you approach political or identity-related clothing that may be considered threatening or divisive?', answer: `Solution: The policy should be viewpoint-neutral and focus on behavior and disruption. Clothing that targets individuals or groups with hate speech or incites violence can be prohibited, while general political statements are often protected.` },
-        { id: 23, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Do you allow faculty to babysit or tutor current students outside of school? What policy language do you use?', answer: `Solution: Many schools prohibit or strongly discourage this to avoid dual-role conflicts of interest. A policy should clearly state the school's position and require disclosure and approval from a division head if exceptions are considered.` },
-        { id: 24, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Do you have student travel guidance for international trips, including phone security and re-entry detention protocols?', answer: `Solution: Yes, guidance should include recommendations for using burner phones or wiping personal devices, awareness of digital surveillance in the host country, and a clear protocol for who to contact if a student is detained upon re-entry.` },
-        { id: 25, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'If summer programs are open to non-students, what forms or documents do you require at registration?', answer: `Solution: Essential forms include an emergency contact/medical information form, liability waiver, photo/media release, and acknowledgment of key school policies (e.g., code of conduct, acceptable use).` },
-        { id: 26, category: 'Governance and Board Topics', question: 'How do you keep former board members meaningfully engaged after their term ends?', answer: `Solution: Create an emeritus or advisory council, invite them to special events, and keep them on targeted mailing lists. This maintains their institutional knowledge and potential for future support without blurring governance lines.` },
-        { id: 27, category: 'Governance and Board Topics', question: 'Who signs the annual tuition increase letter: Head, Board Chair, Business Officer, or someone else?', answer: `Solution: The Board Chair should sign the letter, as setting tuition is a primary fiduciary responsibility of the Board. The Head of School may be a co-signer to show administrative support for the decision.` },
+        // Human Resources
+        { id: 1, category: 'Human Resources', question: 'Has anyone hired an international teacher with U.S. work authorization?', answer: 'Solution: Schools often use H-1B visas for specialty occupations. It requires demonstrating the role needs a specific degree. Consult an immigration attorney to navigate the sponsorship process, including LCA filing and USCIS petitions.' },
+        { id: 2, category: 'Human Resources', question: 'Do you allow flexible or remote summer work for employees? Any sample policies?', answer: 'Solution: Yes, many schools offer this. A good policy defines eligibility (e.g., role, performance), expectations for availability and communication, and technology/security requirements. Specify if it\'s fully remote or hybrid.' },
+        { id: 3, category: 'Human Resources', question: 'Do you offer extended care (before/after school), and what discounts do faculty/staff receive?', answer: 'Solution: Most schools with extended care offer a significant discount (50-100%) to faculty and staff as a key benefit, though it may be a taxable fringe benefit depending on the discount amount.' },
+        { id: 4, category: 'Human Resources', question: 'Does your gift agreement include a clause allowing revocation due to a donor’s misconduct?', answer: 'Solution: Yes, this is increasingly common. A "morals clause" or "reputational harm" clause allows the school to return a gift and remove naming rights if a donor\'s actions harm the institution\'s reputation.' },
+        { id: 5, category: 'Human Resources', question: 'What’s your spending threshold for requiring Board/Finance Committee approval?', answer: 'Solution: This varies by budget size. A common model is: Head of School has discretion up to $X (e.g., $25,000), Finance Committee approval required up to $Y (e.g., $100,000), and full Board approval for anything above.' },
+        { id: 6, category: 'Human Resources', question: 'Do you have RFP or bid requirements for selecting vendors or contractors?', answer: 'Solution: A policy requiring multiple bids (e.g., three) for purchases over a certain threshold (e.g., $10,000) ensures fiscal responsibility and transparency.' },
+        { id: 7, category: 'Human Resources', question: 'Do you collect student or parent feedback in teacher evaluations?', answer: 'Solution: Yes, using confidential, structured surveys (e.g., through SurveyMonkey) can provide valuable feedback for professional growth. It should be one of multiple data points in an evaluation.' },
+        { id: 8, category: 'Human Resources', question: 'Are librarians paid on the teacher salary scale or a different structure?', answer: 'Solution: It varies. If the librarian holds a teaching degree and has instructional duties, they are often on the teacher scale. If the role is purely administrative, a separate staff scale may be used.' },
+        { id: 9, category: 'Human Resources', question: 'Does your school have ICE protocols or immigration enforcement policies?', answer: 'Solution: Schools should have a policy directing all such inquiries to the Head of School, and staff should be trained not to provide information or grant access without the Head\'s explicit permission and legal counsel\'s advice.' },
+        { id: 10, category: 'Human Resources', question: 'Can anyone share their maternity/paternity leave policies?', answer: 'Solution: A typical independent school policy offers 6-8 weeks of paid leave (often through short-term disability) and allows for the use of accrued sick/personal time. FMLA provides up to 12 weeks of unpaid, job-protected leave.' },
+        { id: 11, category: 'Human Resources', question: 'How do you handle political or cause-based student attire (e.g., BLM, Free Palestine, rainbow pins)?', answer: 'Solution: The policy should focus on disruption. If the attire does not disrupt the educational environment, it is generally protected speech. However, schools can prohibit hate speech or symbols that cause significant disruption.' },
+        { id: 12, category: 'Human Resources', question: 'How do you approach compensation when 12-month admin salaries seem lower per month than 10-month teacher salaries?', answer: 'Solution: This requires transparent communication about how salaries are calculated (e.g., daily rate vs. annual salary) and ensuring that administrative roles are benchmarked against comparable 12-month positions in the market.' },
+        // Student & Parent Handbook / Policy Questions
+        { id: 13, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'How should we handle consequences for a student caught stealing multiple valuable items, including apology expectations?', answer: 'Solution: A multi-faceted approach is best: suspension, restitution for stolen items, and a restorative justice component, such as a mediated apology to the victims to ensure it\'s sincere and educational.' },
+        { id: 14, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Does anyone have a strong school refusal policy to share?', answer: 'Solution: A strong policy involves a collaborative approach: require medical documentation for absences, create a tiered intervention plan with counselors and admin, and define when the situation becomes a truancy issue requiring state reporting.' },
+        { id: 15, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'How do you authorize host families to act as legal guardians for international students?', answer: 'Solution: This requires a formal, notarized document from the student\'s parents, often called a "Power of Attorney for Care of a Minor," granting the host family authority for medical and educational decisions.' },
+        { id: 16, category: 'Student, Parent & Faculty Handbook Policy Questions', question: "How should we approach a report that a student sent explicit images to an adult (prior to a school trip)?", answer: 'Solution: Immediate action is critical. The student should be removed from the trip pending an investigation. The school must follow its child protection policy, which includes reporting the incident to the appropriate authorities (e.g., child protective services).' },
+        { id: 17, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Do you have policy language about students distributing inappropriate photos on school devices?', answer: 'Solution: Your Acceptable Use Policy should explicitly prohibit the creation or distribution of obscene, defamatory, or inappropriate content, with clear consequences such as suspension and loss of technology privileges.' },
+        { id: 18, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Should we allow a parent-owned business to charge for services at a school event? How do we maintain fairness?', answer: 'Solution: To avoid conflicts of interest, the best practice is to have a policy that either prohibits this or requires a formal, transparent bidding process (RFP) for all vendors, regardless of their connection to the school.' },
+        { id: 19, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'What policies exist around payout or acknowledgment for long-unused sick time for administrators?', answer: 'Solution: Some schools cap the accrual of sick time. Others offer a partial payout upon retirement (e.g., a percentage of the value) or convert it to service credit for retirement benefits, but this is becoming less common.' },
+        { id: 20, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Has anyone transitioned to uniforms for Grades 1–8? Tips for change management and parent communication?', answer: 'Solution: Successful transitions involve a long lead time (12-18 months), forming a parent/faculty committee to select options, holding town halls to address concerns, and phasing in the requirement over a school year.' },
+        { id: 21, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'If a student withdraws due to medical issues and doesn’t enroll elsewhere, do we have truancy reporting obligations?', answer: 'Solution: Yes, if the student is of compulsory school age, you are likely required to report the withdrawal to the local school district to ensure the student is not considered truant. Check your state\'s specific reporting requirements.' },
+        { id: 22, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'How do you approach political or identity-related clothing that may be considered threatening or divisive?', answer: 'Solution: The policy should be viewpoint-neutral and focus on behavior and disruption. Clothing that targets individuals or groups with hate speech or incites violence can be prohibited, while general political statements are often protected.' },
+        { id: 23, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Do you allow faculty to babysit or tutor current students outside of school? What policy language do you use?', answer: 'Solution: Many schools prohibit or strongly discourage this to avoid dual-role conflicts of interest. A policy should clearly state the school\'s position and require disclosure and approval from a division head if exceptions are considered.' },
+        { id: 24, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Do you have student travel guidance for international trips, including phone security and re-entry detention protocols?', answer: 'Solution: Yes, guidance should include recommendations for using burner phones or wiping personal devices, awareness of digital surveillance in the host country, and a clear protocol for who to contact if a student is detained upon re-entry.' },
+        { id: 25, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'If summer programs are open to non-students, what forms or documents do you require at registration?', answer: 'Solution: Essential forms include an emergency contact/medical information form, liability waiver, photo/media release, and acknowledgment of key school policies (e.g., code of conduct, acceptable use).' },
+        // Governance & Board Topics
+        { id: 26, category: 'Governance and Board Topics', question: 'How do you keep former board members meaningfully engaged after their term ends?', answer: 'Solution: Create an emeritus or advisory council, invite them to special events, and keep them on targeted mailing lists. This maintains their institutional knowledge and potential for future support without blurring governance lines.' },
+        { id: 27, category: 'Governance and Board Topics', question: 'Who signs the annual tuition increase letter: Head, Board Chair, Business Officer, or someone else?', answer: 'Solution: The Board Chair should sign the letter, as setting tuition is a primary fiduciary responsibility of the Board. The Head of School may be a co-signer to show administrative support for the decision.' },
     ];
-
 
     const handleAnalyze = (id) => {
         if (revealedAnswers[id]) {
@@ -1082,8 +1089,8 @@ function IndustryQuestionsCard() {
         }
     };
 
-    const filteredQuestions = selectedTopic === 'All' 
-        ? industryQuestions 
+    const filteredQuestions = selectedTopic === 'All'
+        ? industryQuestions
         : industryQuestions.filter(q => q.category === selectedTopic);
 
     return (
@@ -1145,7 +1152,7 @@ function HighlightedText({ text, highlight }) {
 
     return (
         <p className="text-sm leading-relaxed whitespace-pre-line">
-            {parts.map((part, i) => 
+            {parts.map((part, i) =>
                 regex.test(part) ? (
                     <span key={i} className="bg-yellow-300 font-bold text-black px-1 rounded">
                         {part}
@@ -1159,7 +1166,7 @@ function HighlightedText({ text, highlight }) {
 }
 
 
-// --- Main Dashboard Component ---
+// --- Main App Component ---
 const handbookSectionLanguage = {
     "1. Introduction": `1.1 Welcome\nAs a member of the faculty and staff of TS (“TS”), employees are a vital part of this educational community, the purpose of which is to help young people achieve their full potential as students and citizens. We hope and expect that employees’ participation in this endeavor will be a rich and rewarding experience and will help the school set the highest standards for personal and professional lives that help promote the school’s mission. \n\n1.2 Purpose of Employee Handbook\nThe purpose of this employee handbook is to provide employees with a general guide to policies, practices, and benefits at TS. If used in conjunction with the Student/Parent Handbook, it will answer some of the more common questions that arise. This handbook is general in nature and not intended to be comprehensive or to address all of the possible applications of, or exceptions to, the general policies and procedures described. TS reserves the right to modify, supplement, or rescind from time to time any of the policies, practices, and benefits described in this handbook as it deems appropriate in TS’s sole discretion with or without notice. Where applicable, the benefit plan documents will govern the administration of TS benefits.\n\nThis employee handbook is not an express or implied contract for employment or any purpose, and nothing contained in this handbook is intended or should be construed as a guarantee of employment or any benefit for any period of time. Except for those faculty and administrators employed pursuant to individual written employment contracts, employment at TS is “at-will,” which means that employment is not for a fixed term and may be terminated by TS or the employee at any time for any reason with or without notice.\n\nAfter reading these policies, any questions should be directed to your supervisor or the Director of Finance. TS employees are expected to follow all TS policies and guidelines. As set forth in more detail herein, failure to comply with the policies set forth in this handbook may result in disciplinary action, up to and including termination of employment. Nothing in this employee handbook is intended to result in non-compliance with applicable laws or regulations. If there is a conflict between this Handbook and any federal, state, or local law or regulation, the law or regulation will govern.`,
     "2. Equal Employment Opportunity Policies and Procedures": `2.1 Equal Employment Opportunity \nTS provides equal employment opportunity to all students, employees and applicants without regard to race, color, religion, sex, age, national origin, sexual orientation, disability, veteran status, family medical history, genetic information or any other legally protected category. This policy governs all student-related decisions and employment decisions, including recruitment, hiring, job assignment, compensation, training, promotion, discipline, transfer, leave-of-absence, access to benefits, layoff, recall, termination and other personnel matters. All student-related and employment-related decisions are based solely upon legitimate, non-discriminatory factors.\n\n2.2 Employment Eligibility \nIn compliance with the Immigration Reform and Control Act of 1986 (“IRCA”) TS is required to verify employment eligibility for each employee hired. New employees must present documentation within three days of hire proving identity and eligibility for employment as required by IRCA. TS will employ only persons who are authorized to work in the United States. Each employee is required to complete an Employment Eligibility Verification Form (Form I-9).\n\n2.3 Americans with Disabilities Act Policy \nTS complies with the Americans with Disabilities Act (“ADA”), as amended by the ADA Amendments Act (“ADAAA”), and all applicable state and local fair employment practices laws, and is committed to providing equal employment opportunities to qualified individuals with disabilities. Consistent with this commitment, TS will provide a reasonable accommodation to disabled applicants and employees if the reasonable accommodation would allow the individual to perform the essential functions of the job, unless doing so would create undue hardship. \n\n2.4 Non-Discrimination and Harassment \nTS is committed to providing a school environment that is free from all forms of discrimination and harassment. Harassment consists of unwelcome conduct, whether verbal, physical or visual, that is based upon or derisive of a person’s race, color, religion, sex, age, national origin, sexual orientation, disability, veteran status, family medical history, genetic information or other legally protected characteristics or conduct, where the unwelcome conduct affects tangible job benefits, unreasonably interferes with an individual’s work performance, or creates an intimidating, hostile, or offensive working environment. All employees have a personal responsibility to keep the work place free of any such harassment.`,
@@ -1173,7 +1180,7 @@ const findSectionByNumber = (numberStr) => {
     if (!numberStr) return null;
     const mainSectionNumber = numberStr.split('.')[0];
     const sectionTitle = Object.keys(handbookSectionLanguage).find(key => key.startsWith(mainSectionNumber + '.'));
-    
+
     if (sectionTitle) {
         return { title: sectionTitle, content: handbookSectionLanguage[sectionTitle] };
     }
@@ -1188,16 +1195,13 @@ export default function App() {
     const [selectedSection, setSelectedSection] = useState("1. Introduction");
     const [isSectionLanguageOpen, setIsSectionLanguageOpen] = useState(false);
     const [modalSection, setModalSection] = useState(null);
-    const [queryHistory, setQueryHistory] = useState([]);
-    const [db, setDb] = useState(null);
-    const [userId, setUserId] = useState(null);
 
     // Q&A State
     const [hosQaQuestion, setHosQaQuestion] = useState("");
     const [isAnalyzing, setIsAnalyzing] = useState(false);
     const [currentAnswer, setCurrentAnswer] = useState(null);
     const [submittedQuestion, setSubmittedQuestion] = useState(null);
-    
+
     // Legal Q&A State
     const [legalQuestion, setLegalQuestion] = useState("");
     const [isAnalyzingLegal, setIsAnalyzingLegal] = useState(false);
@@ -1208,7 +1212,7 @@ export default function App() {
     const [handbookTopicQuery, setHandbookTopicQuery] = useState("");
     const [handbookTopicResults, setHandbookTopicResults] = useState(null);
     const [isAnalyzingTopic, setIsAnalyzingTopic] = useState(false);
-    
+
     // Modal State
     const [legalJournalQuery, setLegalJournalQuery] = useState("");
     const [isLegalJournalOpen, setIsLegalJournalOpen] = useState(false);
@@ -1231,59 +1235,6 @@ export default function App() {
         setIsLegalJournalOpen(false);
         setLegalJournalQuery("");
     };
-    
-    // Firebase Setup (Temporarily disabled as requested)
-    /*
-    useEffect(() => {
-        try {
-            const firebaseConfig = JSON.parse(window.__firebase_config || '{}');
-            if (!firebaseConfig.apiKey) return;
-            const app = initializeApp(firebaseConfig);
-            const firestoreDb = getFirestore(app);
-            const firebaseAuth = getAuth(app);
-            setDb(firestoreDb);
-
-            const unsubscribeAuth = onAuthStateChanged(firebaseAuth, async (user) => {
-                if (user) {
-                    setUserId(user.uid);
-                } else {
-                    try {
-                        const initialToken = window.__initial_auth_token;
-                        if (initialToken) {
-                            const userCredential = await signInWithCustomToken(firebaseAuth, initialToken);
-                            setUserId(userCredential.user.uid);
-                        } else {
-                            const userCredential = await signInAnonymously(firebaseAuth);
-                            setUserId(userCredential.user.uid);
-                        }
-                    } catch (error) { console.error("Error signing in:", error); }
-                }
-            });
-            return () => unsubscribeAuth();
-        } catch (e) { console.error("Firebase config error.", e); }
-    }, []);
-
-    useEffect(() => {
-        if (db && userId) {
-            const appId = typeof window.__app_id !== 'undefined' ? window.__app_id : 'default-app-id';
-            const q = query(collection(db, `artifacts/${appId}/users/${userId}/queries`), orderBy("timestamp", "desc"));
-            
-            const unsubscribe = onSnapshot(q, (querySnapshot) => {
-                const history = [];
-                querySnapshot.forEach((doc) => { history.push(doc.data().text); });
-                
-                const archivedIssues = [
-                    "Parent complaint about unfair suspension without notice",
-                    "Non-renewed faculty member wants to use sick days as vacation before departure."
-                ];
-                const combinedHistory = [...new Set([...archivedIssues, ...history])];
-                setQueryHistory(combinedHistory);
-            });
-
-            return () => unsubscribe();
-        }
-    }, [db, userId]);
-    */
 
     // Data and Constants
     const SIDEBAR_LINKS = [
@@ -1323,12 +1274,12 @@ export default function App() {
     ];
 
     const fullHandbookText = Object.values(handbookSectionLanguage).join("\n\n");
-    
+
     const suggestedSectionLanguage = {
         "2. Equal Employment Opportunity": `To further enhance our commitment...`,
         "5. Harassment and Bullying Policy": `An anonymous reporting procedure has been established...`,
     };
-    
+
     const hosQaTopics = ["All", "Discipline", "HR", "Student Safety"];
 
     function formatDate(dateStr) {
@@ -1344,7 +1295,7 @@ export default function App() {
             "Cyberbullying legislation signed": <span>Update <SectionLink number="6.3" onLinkClick={handleSectionLinkClick} /> (Student - Employee Relationship) and add a Technology Acceptable Use Policy to include specific language addressing cyberbullying and digital citizenship.</span>
         };
         const defaultSuggestion = `Based on the topic "${item.text}", consider updating the relevant handbook section.`;
-        
+
         setSuggestedUpdate(suggestionMap[item.text] || defaultSuggestion);
         suggestionSectionRef.current = `Alert/Trend: ${item.text}`;
         setShowSuggestionModal(true);
@@ -1352,8 +1303,11 @@ export default function App() {
 
     const handleHosQaSubmit = async () => {
         const questionText = hosQaQuestion;
-        if (!questionText) return;
-        
+        if (!questionText || !GEMINI_API_KEY) {
+            alert("Please provide a question and ensure your API key is set.");
+            return;
+        }
+
         setSubmittedQuestion(questionText);
         setIsAnalyzing(true);
         setCurrentAnswer(null);
@@ -1382,7 +1336,7 @@ Question: "${questionText}"`;
         };
 
         try {
-            const payload = { 
+            const payload = {
                 contents: [{ role: "user", parts: [{ text: prompt }] }],
                 generationConfig: {
                     responseMimeType: "application/json",
@@ -1422,7 +1376,7 @@ Question: "${questionText}"`;
         if (!handbookTopicQuery) return;
         setIsAnalyzingTopic(true);
         setHandbookTopicResults(null);
-        setTimeout(() => { 
+        setTimeout(() => {
             const query = handbookTopicQuery.toLowerCase();
             const results = [];
             for (const sectionTitle in handbookSectionLanguage) {
@@ -1443,7 +1397,10 @@ Question: "${questionText}"`;
 
     const handleLegalQaSubmit = async () => {
         const questionText = legalQuestion;
-        if (!questionText) return;
+        if (!questionText || !GEMINI_API_KEY) {
+             alert("Please provide a question and ensure your API key is set.");
+            return;
+        }
 
         setSubmittedLegalQuestion(questionText);
         setIsAnalyzingLegal(true);
@@ -1458,7 +1415,7 @@ CRITICAL INSTRUCTIONS:
 Format your response as a JSON object with three keys: "guidance", "references", and "risk". The "risk" key's value should be an object with "level", "analysis", and "recommendation". The "recommendation" value MUST be an array of strings, each being a numbered step.
 
 Question: "${questionText}"`;
-        
+
         const legalResponseSchema = {
             type: "OBJECT",
             properties: {
@@ -1478,7 +1435,7 @@ Question: "${questionText}"`;
         };
 
         try {
-            const payload = { 
+            const payload = {
                 contents: [{ role: "user", parts: [{ text: prompt }] }],
                 generationConfig: {
                     responseMimeType: "application/json",
@@ -1539,7 +1496,7 @@ Question: "${questionText}"`;
             <div className="shadow-2xl border-0" style={{ background: "#4B5C64" }}>
                 <div className="p-6" style={{ color: "#fff" }}>
                     <SectionHeader icon={<BookOpen className="text-[#faecc4]" size={26} />} title="IQ Handbook" />
-                    
+
                     <div>
                         <h3 className="text-lg font-bold mb-2" style={{ color: "#faecc4" }}>1. Review by Section</h3>
                         <div className="mb-2">
@@ -1559,7 +1516,7 @@ Question: "${questionText}"`;
                         <div className="mb-2">
                             <button className="text-lg font-bold cursor-pointer focus:outline-none" style={{ color: "#faecc4" }} onClick={() => setIsSectionLanguageOpen(open => !open)}>
                             {selectedSection.split('. ').slice(1).join('. ')}
-                            </button>                                        
+                            </button>
                             <span className="ml-2 text-xs" style={{ color: "#fff" }}>(Click to show/hide full Handbook Section language)</span>
                         </div>
                         {isSectionLanguageOpen && (
@@ -1621,8 +1578,8 @@ Question: "${questionText}"`;
                                         Clear Results
                                     </button>
                                 </div>
-                                <div 
-                                    className="bg-slate-100 p-4 rounded-xl shadow-inner border border-slate-200 space-y-4" 
+                                <div
+                                    className="bg-slate-100 p-4 rounded-xl shadow-inner border border-slate-200 space-y-4"
                                     style={{ color: "#222", maxHeight: "400px", overflowY: "scroll" }}
                                 >
                                     {handbookTopicResults.length > 0 ? (
@@ -1740,7 +1697,7 @@ Question: "${questionText}"`;
             </div>
         </div>
     );
-    
+
     const HOSQA = (
         <div className="max-w-2xl mx-auto space-y-8">
             <div className="shadow-2xl border-0 rounded-2xl" style={{ background: "#4B5C64", color: "#fff" }}>
@@ -1880,13 +1837,13 @@ Question: "${questionText}"`;
     );
 
     const CALENDAR = () => {
-        const [currentDate, setCurrentDate] = useState(new Date(2025, 7, 1)); 
+        const [currentDate, setCurrentDate] = useState(new Date(2025, 7, 1));
         const [events, setEvents] = useState([
             { date: '2025-08-09', title: 'Head of School - Town Hall' },
             { date: '2025-08-11', title: 'FMLA Guidance webinar' },
             { date: '2025-08-15', title: 'Board of Trustees Meeting' },
             { date: '2025-08-25', title: 'ADA Legal Guidance webinar' },
-            { date: '2025-10-20', title: 'NAIS Annual Conference' } 
+            { date: '2025-10-20', title: 'NAIS Annual Conference' }
         ]);
         const [showEventModal, setShowEventModal] = useState(false);
         const [selectedDate, setSelectedDate] = useState(null);
@@ -2043,7 +2000,7 @@ Question: "${questionText}"`;
 
                 <main className="flex-1 p-10 overflow-y-auto bg-gray-100">
                     {page === "dashboard" && DASHBOARD}
-                    {page === "risk" && <RiskAssessmentCenter handbookText={fullHandbookText} apiKey={GEMINI_API_KEY} handbookSectionLanguage={handbookSectionLanguage} onSectionLinkClick={handleSectionLinkClick} onLegalLinkClick={handleOpenLegalJournal} queryHistory={queryHistory} setQueryHistory={setQueryHistory} db={db} userId={userId} />}
+                    {page === "risk" && <RiskAssessmentCenter handbookText={fullHandbookText} apiKey={GEMINI_API_KEY} handbookSectionLanguage={handbookSectionLanguage} onSectionLinkClick={handleSectionLinkClick} onLegalLinkClick={handleOpenLegalJournal} />}
                     {page === "handbook" && HANDBOOK}
                     {page === "calendar" && <CALENDAR />}
                     {page === "alerts" && ALERTS}
@@ -2069,7 +2026,7 @@ Question: "${questionText}"`;
                     </div>
                 </div>
             )}
-            
+
             <HandbookSectionModal section={modalSection} onClose={() => setModalSection(null)} />
             {isLegalJournalOpen && (
                 <LegalReferenceJournal
