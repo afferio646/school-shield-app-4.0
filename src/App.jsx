@@ -12,7 +12,7 @@ import ExpandableOption from './components/ExpandableOption.jsx';
 
 // --- SECURE API KEY HANDLING ---
 // IMPORTANT: Replace "YOUR_API_KEY_HERE" with your actual Google AI API key
-const GEMINI_API_KEY = "YOUR_API_KEY_HERE";
+const GEMINI_API_KEY = "AIzaSyCYAfKVJ9BTLWHpNLDr0bHDsvYOdWMfIpw";
 
 
 // --- Helper Components ---
