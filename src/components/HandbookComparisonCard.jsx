@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import ExpandableOption from './ExpandableOption';
+import ExpandableOption from './ExpandableOption.jsx';
 
 export default function HandbookComparisonCard({ apiKey }) {
     const [selectedTopic, setSelectedTopic] = useState("");
