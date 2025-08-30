@@ -1,52 +1,31 @@
-import React from 'react';
-import { X, Search } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { X, Search } from "lucide-react";
 
 export default function LegalReferenceJournal({ query, onClose, apiKey }) {
-  const [results, setResults] = React.useState([]);
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [error, setError] = React.useState(null);
+  const [results, setResults] = useState([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState(null);
 
-  React.useEffect(() => {
+  useEffect(() => {
     const fetchLegalData = async () => {
       if (!query) return;
 
       setIsLoading(true);
       setError(null);
-
-      const systemPrompt = `You are a legal research assistant. Your task is to perform a Google search for the user's query, which will be a legal case name. You must return the top 4 search results. For each result, you must provide the title, the full URL, and a concise snippet. Your entire response must be a JSON object that strictly follows this schema: { "results": [{ "title": "string", "url": "string", "snippet": "string" }] }`;
       
-      const userQuery = `Find a detailed analysis of the case: ${query}`;
+      const prompt = `You are a legal research assistant. Your task is to perform a Google search for the user's query, which will be a legal case name. 
+You must return the top 4 search results. For each result, you must provide the title, the full URL, and a concise snippet. 
+Your entire response must be ONLY a raw JSON object (no markdown, no commentary) that strictly follows this schema: 
+{ "results": [{ "title": "string", "url": "string", "snippet": "string" }] }
+
+User Query: "${query}"`;
 
       try {
         const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
         
         const payload = {
-          contents: [{ parts: [{ text: userQuery }] }],
-          tools: [{ "google_search": {} }],
-          systemInstruction: {
-            parts: [{ text: systemPrompt }]
-          },
-          generationConfig: {
-            responseMimeType: "application/json",
-            responseSchema: {
-              type: "OBJECT",
-              properties: {
-                "results": {
-                  type: "ARRAY",
-                  items: {
-                    type: "OBJECT",
-                    properties: {
-                      "title": { "type": "STRING" },
-                      "url": { "type": "STRING" },
-                      "snippet": { "type": "STRING" }
-                    },
-                    required: ["title", "url", "snippet"]
-                  }
-                }
-              },
-              required: ["results"]
-            }
-          }
+          contents: [{ parts: [{ text: prompt }] }],
+          tools: [{ "google_search_retrieval": {} }],
         };
 
         const response = await fetch(apiUrl, {
@@ -56,17 +35,33 @@ export default function LegalReferenceJournal({ query, onClose, apiKey }) {
         });
 
         if (!response.ok) {
+          const errorBody = await response.json();
+          console.error("API Error Body:", errorBody);
           throw new Error(`API request failed with status ${response.status}`);
         }
 
         const result = await response.json();
-        const jsonText = result.candidates[0].content.parts[0].text;
-        const parsedData = JSON.parse(jsonText);
-        setResults(parsedData.results || []);
+        
+        if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
+            let rawText = result.candidates[0].content.parts[0].text;
+            
+            const jsonMatch = rawText.match(/\{[\s\S]*\}/);
+            if (!jsonMatch) {
+                throw new Error("No valid JSON object found in the API response.");
+            }
+            
+            const jsonText = jsonMatch[0];
+            const parsedData = JSON.parse(jsonText);
+            setResults(parsedData.results || []);
+        } else {
+            console.warn("API returned no valid candidates or content parts.");
+            setResults([]);
+        }
+
 
       } catch (err) {
         console.error("Error fetching legal data:", err);
-        setError("Failed to retrieve search results. The AI model may be temporarily unavailable.");
+        setError("Failed to retrieve search results. The AI model may be temporarily unavailable or the query returned no results.");
       } finally {
         setIsLoading(false);
       }
@@ -91,12 +86,12 @@ export default function LegalReferenceJournal({ query, onClose, apiKey }) {
           <p className="mb-4 text-gray-300">
             Displaying top search results for: <em className="font-semibold text-white">{query}</em>
           </p>
-          {isLoading && <p className="text-center">Searching...</p>}
-          {error && <p className="text-red-400">{error}</p>}
-          {!isLoading && !error && (
+          {isLoading && <div className="flex justify-center items-center p-8"><div className="animate-spin rounded-full h-12 w-12 border-b-2 border-white"></div></div>}
+          {error && <p className="text-red-400 text-center p-4">{error}</p>}
+          {!isLoading && !error && results.length > 0 && (
             <div className="space-y-5">
               {results.map((item, index) => (
-                <div key={index}>
+                <div key={index} className="border-b border-gray-600 pb-4 last:border-b-0">
                   <a
                     href={item.url}
                     target="_blank"
@@ -105,15 +100,17 @@ export default function LegalReferenceJournal({ query, onClose, apiKey }) {
                   >
                     {item.title}
                   </a>
-                  <p className="text-sm text-green-400 truncate">{item.url}</p>
-                  <p className="text-gray-200 mt-1">{item.snippet}</p>
+                  <p className="text-sm text-green-400 truncate mt-1">{item.url}</p>
+                  <p className="text-gray-200 mt-2">{item.snippet}</p>
                 </div>
               ))}
             </div>
           )}
+           {!isLoading && !error && results.length === 0 && (
+            <p className="text-center text-gray-400 p-4">No results found for this query.</p>
+           )}
         </div>
       </div>
     </div>
   );
 }
-
