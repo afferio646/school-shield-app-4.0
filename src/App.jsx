@@ -10,7 +10,7 @@ import ExpandableOption from './components/ExpandableOption.jsx';
 // --- SECURE API KEY HANDLING ---
 // This now reads the API key from an environment variable.
 // Make sure to set this up in your Vercel deployment settings.
-const const GEMINI_API_KEY = "AIzaSyCYAfKVJ9BTLWHpNLDr0bHDsvYOdWMfIpw";
+const GEMINI_API_KEY = "AIzaSyCYAfKVJ9BTLWHpNLDr0bHDsvYOdWMfIpw";
 
 // --- Helper Components ---
 
