@@ -1,14 +1,18 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Bell, BookOpen, Shield, AlertCircle, TrendingUp, MessageCircle, Gavel, ChevronLeft, ChevronRight, Calendar, X, Archive, ExternalLink, Search } from "lucide-react";
-import { initializeApp } from 'firebase/app';
-import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, collection, addDoc, query, onSnapshot, serverTimestamp, orderBy } from 'firebase/firestore';
+// import { initializeApp } from 'firebase/app';
+// import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from 'firebase/auth';
+// import { getFirestore, collection, addDoc, query, onSnapshot, serverTimestamp, orderBy } from 'firebase/firestore';
+
+// Import the extracted components
 import HandbookComparisonCard from './components/HandbookComparisonCard.jsx';
-import LegalReferenceJournal from './components/LegalReferenceJournal';
+import LegalReferenceJournal from './components/LegalReferenceJournal.jsx';
+import ExpandableOption from './components/ExpandableOption.jsx';
+
 
 // --- SECURE API KEY HANDLING ---
-// The API key is now preserved as requested.
-const GEMINI_API_KEY = "AIzaSyCYAfKVJ9BTLWHpNLDr0bHDsvYOdWMfIpw";
+// IMPORTANT: Replace "YOUR_API_KEY_HERE" with your actual Google AI API key
+const GEMINI_API_KEY = "YOUR_API_KEY_HERE";
 
 
 // --- Helper Components ---
@@ -23,32 +27,13 @@ function SectionHeader({ icon, title, children }) {
     );
 }
 
-function ExpandableOption({ title, children }) {
-    const [open, setOpen] = useState(false);
-    return (
-        <div
-            className="border rounded-md p-4 shadow-sm my-2"
-            style={{ background: "rgba(0,0,0,0.1)", borderColor: "rgba(255,255,255,0.2)" }}
-        >
-            <div
-                className="font-semibold cursor-pointer hover:underline"
-                style={{ color: "#faecc4" }}
-                onClick={() => setOpen(!open)}
-            >
-                {open ? '▼' : '▶'} {title}
-            </div>
-            {open && <div className="mt-2 space-y-2">{children}</div>}
-        </div>
-    );
-}
-
-// --- NEW: Handbook Section Link Component ---
+// --- Handbook Section Link Component ---
 function SectionLink({ number, onLinkClick, children }) {
     return (
         <button 
             className="text-blue-300 underline hover:text-blue-200 font-bold focus:outline-none inline"
             onClick={(e) => {
-                e.stopPropagation(); // Prevent parent click events
+                e.stopPropagation();
                 onLinkClick(number);
             }}
         >
@@ -57,22 +42,21 @@ function SectionLink({ number, onLinkClick, children }) {
     );
 }
 
-// --- CORRECTED: AIContentRenderer with fixed link generation ---
-// Replace your current AIContentRenderer function with this one
-function AIContentRenderer({ content, onSectionLinkClick, onLegalLinkClick }) {
+// --- AIContentRenderer ---
+function AIContentRenderer({ content, onSectionLinkClick, onLegalLinkClick, openOptions, onOptionToggle }) {
     const renderTextWithLinks = (text) => {
         if (typeof text !== 'string') return text;
 
-        const sectionRegex = /(Section\s\d+(?:\.\d+)?)/;
-        const caseLawRegex = /(\*[^*]+\sv\.\s[^*]+\*)/;
-        const boldRegex = /(\*\*.*?\*\*)/;
+        const sectionRegex = /(Section\s\d+(?:\.\d+)?)/g;
+        const caseLawRegex = /(\*[^*]+\sv\.\s[^*]+\*)/g;
+        const boldRegex = /(\*\*.*?\*\*)/g;
         
-        const combinedRegex = new RegExp(`${sectionRegex.source}|${caseLawRegex.source}|${boldRegex.source}`, 'g');
+        const combinedRegex = new RegExp(`(${sectionRegex.source}|${caseLawRegex.source}|${boldRegex.source})`, 'g');
         
         const parts = text.split(combinedRegex).filter(Boolean);
 
         return parts.map((part, i) => {
-            if (/^Section\s\d+(?:\.\d+)?$/.test(part)) {
+            if (sectionRegex.test(part)) {
                 const sectionNumber = part.match(/(\d+(\.\d+)?)/)[0];
                 return (
                     <SectionLink key={i} number={sectionNumber} onLinkClick={onSectionLinkClick}>
@@ -80,7 +64,7 @@ function AIContentRenderer({ content, onSectionLinkClick, onLegalLinkClick }) {
                     </SectionLink>
                 );
             }
-            if (/^\*[^*]+\sv\.\s[^*]+\*$/.test(part)) {
+            if (caseLawRegex.test(part)) {
                 const caseName = part.slice(1, -1);
                 return (
                     <span key={i} className="inline-flex items-center gap-2">
@@ -88,7 +72,9 @@ function AIContentRenderer({ content, onSectionLinkClick, onLegalLinkClick }) {
                         <button
                             onClick={(e) => {
                                 e.stopPropagation();
-                                onLegalLinkClick(caseName);
+                                if (typeof onLegalLinkClick === 'function') {
+                                    onLegalLinkClick(caseName);
+                                }
                             }}
                             className="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-2 py-0.5 rounded-md text-xs inline-flex items-center gap-1"
                         >
@@ -98,7 +84,7 @@ function AIContentRenderer({ content, onSectionLinkClick, onLegalLinkClick }) {
                     </span>
                 );
             }
-            if (/^\*\*.*?\*\*$/.test(part)) {
+            if (boldRegex.test(part)) {
                  return <strong key={i} className="text-[#faecc4]">{part.slice(2, -2)}</strong>;
             }
             return <span key={i}>{part}</span>;
@@ -106,6 +92,34 @@ function AIContentRenderer({ content, onSectionLinkClick, onLegalLinkClick }) {
     };
 
     if (!content) return null;
+
+    if (React.isValidElement(content)) {
+        if (content.type === React.Fragment && content.props.children) {
+             const children = React.Children.toArray(content.props.children);
+             return (
+                 <>
+                    {children.map((child, index) => {
+                         if (child.type === ExpandableOption) {
+                             const optionKey = `option${String.fromCharCode(65 + index)}`; 
+                             return React.cloneElement(child, {
+                                 key: optionKey,
+                                 isOpen: !!openOptions[optionKey],
+                                 onToggle: () => onOptionToggle(optionKey),
+                                 children: React.Children.map(child.props.children, innerChild => {
+                                     if(React.isValidElement(innerChild) && innerChild.props.children) {
+                                         return <AIContentRenderer content={innerChild.props.children} onSectionLinkClick={onSectionLinkClick} onLegalLinkClick={onLegalLinkClick} />
+                                     }
+                                     return innerChild;
+                                 })
+                             });
+                         }
+                         return child;
+                     })}
+                 </>
+             );
+        }
+        return content;
+    }
 
     if (Array.isArray(content)) {
         if (content.length > 0 && typeof content[0] === 'object' && content[0] !== null && 'header' in content[0]) {
@@ -119,22 +133,14 @@ function AIContentRenderer({ content, onSectionLinkClick, onLegalLinkClick }) {
                 </div>
             );
         }
-
         return (
             <div className="text-white space-y-2">
-                {content.map((item, index) => {
-                    if (React.isValidElement(item)) return React.cloneElement(item, { key: index, onLinkClick });
-                    return (
-                        <p key={index}>
-                           {renderTextWithLinks(String(item))}
-                        </p>
-                    );
-                })}
+                {content.map((item, index) => <p key={index}>{renderTextWithLinks(String(item))}</p>)}
             </div>
         );
     }
 
-    if (typeof content === 'object' && content !== null && !React.isValidElement(content)) {
+    if (typeof content === 'object' && content !== null) {
         if (content.recommendationSummary && content.implementationSteps) {
             return (
                 <div className="space-y-4">
@@ -149,59 +155,63 @@ function AIContentRenderer({ content, onSectionLinkClick, onLegalLinkClick }) {
             );
         }
 
+        if (content.optionA && content.optionB && content.optionC) {
+             return (
+                <div className="text-white">
+                    {Object.entries(content).map(([key, option]) => (
+                         <ExpandableOption 
+                            key={key} 
+                            title={option.title}
+                            isOpen={!!openOptions[key]}
+                            onToggle={() => onOptionToggle(key)}
+                         >
+                            <AIContentRenderer 
+                                content={option} 
+                                onSectionLinkClick={onSectionLinkClick} 
+                                onLegalLinkClick={onLegalLinkClick} 
+                            />
+                        </ExpandableOption>
+                    ))}
+                </div>
+            );
+        }
+        
         return (
-            <div>
-                {Object.entries(content).map(([key, value]) => (
-                    <ExpandableOption key={key} title={value.title || key}>
-                        <div className="space-y-3 text-white">
-                           {Object.entries(value).map(([prop, val]) => {
-                                if (prop === 'title') return null;
-                                const formattedProp = prop.charAt(0).toUpperCase() + prop.slice(1).replace(/([A-Z])/g, ' $1');
-                                
-                                if (prop === 'suggestedLanguage') {
-                                    return (
-                                        <div key={prop} className="mt-2">
-                                            <strong className="text-[#faecc4]">{formattedProp}:</strong>
-                                            <div className="mt-1 p-3 border border-dashed border-gray-500 rounded-md bg-gray-800 italic whitespace-pre-line">
-                                                {renderTextWithLinks(String(val))}
-                                            </div>
-                                        </div>
-                                    );
-                                }
+            <div className="space-y-3 text-white">
+                {Object.entries(content).map(([prop, val]) => {
+                    if (prop === 'title') return null;
+                    const formattedProp = prop.charAt(0).toUpperCase() + prop.slice(1).replace(/([A-Z])/g, ' $1');
+                    
+                    if (prop === 'suggestedLanguage') {
+                        return (
+                            <div key={prop} className="mt-2">
+                                <strong className="text-[#faecc4]">{formattedProp}:</strong>
+                                <div className="mt-1 p-3 border border-dashed border-gray-500 rounded-md bg-gray-800 italic whitespace-pre-line">
+                                    {renderTextWithLinks(String(val))}
+                                </div>
+                            </div>
+                        );
+                    }
 
-                                return (
-                                    <p key={prop}>
-                                        <strong>{formattedProp}:</strong> <span>{renderTextWithLinks(String(val))}</span>
-                                    </p>
-                                );
-                           })}
-                        </div>
-                    </ExpandableOption>
-                ))}
+                    return (
+                        <p key={prop}>
+                            <strong>{formattedProp}:</strong> <span>{renderTextWithLinks(String(val))}</span>
+                        </p>
+                    );
+                })}
             </div>
         );
     }
     
-    if (React.isValidElement(content)) {
-        return React.cloneElement(content, { onLinkClick });
-    }
-
     const lines = String(content).split('\n').filter(line => line.trim() !== '');
     return (
         <div className="text-white space-y-2">
-            {lines.map((line, index) => {
-                 if (React.isValidElement(line)) return React.cloneElement(line, { key: index, onLinkClick });
-                return (
-                    <p key={index}>
-                       {renderTextWithLinks(line)}
-                    </p>
-                );
-            })}
+            {lines.map((line, index) => <p key={index}>{renderTextWithLinks(line)}</p>)}
         </div>
     );
 }
 
-// --- NEW: Handbook Section Modal ---
+// --- Handbook Section Modal ---
 function HandbookSectionModal({ section, onClose }) {
     if (!section) return null;
 
@@ -417,11 +427,12 @@ function HandbookAuditCard() {
         </>
     );
 }
+
 // --- Report Viewer Modal Component ---
-function ReportViewerModal({ report, scenarios, onClose, onSectionLinkClick }) {
+const ReportViewerModal = React.memo(function ReportViewerModal({ report, scenarios, onClose, onSectionLinkClick, onLegalLinkClick }) {
     if (!report) return null;
 
-    const reportData = scenarios(onSectionLinkClick)[report.scenarioKey];
+    const reportData = scenarios[report.scenarioKey];
 
     const StepDetail = ({ title, stepKey, children }) => (
         <div className="p-4 border border-gray-600 rounded-lg bg-gray-800 mb-4">
@@ -455,25 +466,23 @@ function ReportViewerModal({ report, scenarios, onClose, onSectionLinkClick }) {
                         </div>
                         {Object.keys(reportData).filter(k => k.startsWith('step')).map(stepKey => (
                             <StepDetail key={stepKey} stepKey={stepKey} title={reportData[stepKey].title}>
-                                <AIContentRenderer content={reportData[stepKey].content} onSectionLinkClick={onSectionLinkClick} onLegalLinkClick={handleOpenLegalJournal} />
-                                </StepDetail>
-                         ))}
+                                <AIContentRenderer content={reportData[stepKey].content} onSectionLinkClick={onSectionLinkClick} onLegalLinkClick={onLegalLinkClick} />
+                            </StepDetail>
+                          ))}
                     </div>
                 </div>
             </div>
         </div>
     );
-}
+});
 
 // --- Archived Reports Card Component ---
 function ArchivedReportsCard({ reports, onViewReport }) {
     const [isOpen, setIsOpen] = useState(false);
 
-    // Placeholder function for the upload button
     const handleUploadClick = (e, reportId) => {
-        e.stopPropagation(); // Prevents the report from opening when you click upload
+        e.stopPropagation();
         console.log(`Upload button clicked for report ID: ${reportId}`);
-        // You can trigger a file input click here or open a modal
     };
 
     return (
@@ -521,35 +530,33 @@ function ArchivedReportsCard({ reports, onViewReport }) {
 // --- Page Components ---
 
 // --- Risk Assessment & Mitigation Center Component --- //
-function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, onSectionLinkClick, queryHistory, setQueryHistory, db, userId }) {
+function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, onSectionLinkClick, onLegalLinkClick, queryHistory, setQueryHistory, db, userId }) {
     const [issue, setIssue] = useState("");
     const [responseGenerated, setResponseGenerated] = useState(false);
     const [loading, setLoading] = useState(false);
-    const [viewMode, setViewMode] = useState('form'); // 'form', 'demo', 'live'
+    const [activeLoader, setActiveLoader] = useState(null);
+    const [viewMode, setViewMode] = useState('form');
     const [selectedScenarioKey, setSelectedScenarioKey] = useState(null);
-    const [openSteps, setOpenSteps] = useState({}); // NEW: State for open steps
+    const [openSteps, setOpenSteps] = useState({}); 
+    const [openSubOptions, setOpenSubOptions] = useState({});
     const [archivedReports, setArchivedReports] = useState([
-        {
-            id: 1,
-            title: "Parent complaint about unfair suspension without notice",
-            date: "August 12, 2025",
-            scenarioKey: 'parentComplaint',
-            issue: "Parent complaint about unfair suspension without notice",
-        },
-        {
-            id: 2,
-            title: "Non-renewed faculty member wants to use sick days as vacation",
-            date: "August 10, 2025",
-            scenarioKey: 'facultyLeave',
-            issue: "Non-renewed faculty member wants to use sick days as vacation before departure.",
-        }
+        { id: 1, title: "Parent complaint about unfair suspension without notice", date: "August 12, 2025", scenarioKey: 'parentComplaint', issue: "Parent complaint about unfair suspension without notice" },
+        { id: 2, title: "Non-renewed faculty member wants to use sick days as vacation", date: "August 10, 2025", scenarioKey: 'facultyLeave', issue: "Non-renewed faculty member wants to use sick days as vacation before departure." }
     ]);
     const [viewedReport, setViewedReport] = useState(null);
     const [generatedSteps, setGeneratedSteps] = useState(null);
     const [fallbackMessage, setFallbackMessage] = useState("");
+    const stepRefs = useRef({});
 
-    // Scenarios are now a function to accept the onSectionLinkClick handler
-    const scenarios = (onSectionLinkClick) => ({
+    const handleSubOptionToggle = useCallback((stepKey, optionKey) => {
+        const fullKey = `${stepKey}-${optionKey}`;
+        setOpenSubOptions(prev => ({
+            ...prev,
+            [fullKey]: !prev[fullKey]
+        }));
+    }, []);
+
+    const scenarios = useMemo(() => ({
         parentComplaint: {
             step1: { title: "Classify the Issue", content: [
                 { header: "Issue Type:", text: "Parent Complaint" },
@@ -611,14 +618,15 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
                 }
             }
         }
-    });
+    }), [onSectionLinkClick, handbookSectionLanguage]);
 
     const handleScenarioButtonClick = (scenarioKey) => {
         const issueText = archivedReports.find(r => r.scenarioKey === scenarioKey)?.issue || '';
         setIssue(issueText);
-        setResponseGenerated(false); // Clear previous results
+        setResponseGenerated(false);
         setGeneratedSteps(null);
-        setOpenSteps({}); // Reset open steps
+        setOpenSteps({});
+        setOpenSubOptions({}); // Reset sub-option memory
         setViewMode('demo');
         setSelectedScenarioKey(scenarioKey);
     };
@@ -627,189 +635,61 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
         if (!issue) return;
         
         setLoading(true);
-        if (!isUpdate) { // Only clear for a brand new analysis
+        setActiveLoader(isUpdate ? 'update' : 'new');
+        if (!isUpdate) {
             setResponseGenerated(false);
             setGeneratedSteps(null);
-            setOpenSteps({}); // Reset open steps
+            setOpenSteps({});
+            setOpenSubOptions({}); // Reset sub-option memory
         }
         setFallbackMessage("");
 
-        // NEW: Save query to history if it's a new, non-demo query
-        if (viewMode === 'live' && !queryHistory.includes(issue) && db && userId) {
-            try {
-                const appId = typeof window.__app_id !== 'undefined' ? window.__app_id : 'default-app-id';
-                await addDoc(collection(db, `artifacts/${appId}/users/${userId}/queries`), {
-                    text: issue,
-                    timestamp: serverTimestamp()
-                });
-            } catch (error) {
-                console.error("Error saving query to Firestore: ", error);
-            }
-        }
-
         if (viewMode === 'demo') {
-             // Artificial delay for demo
             await new Promise(resolve => setTimeout(resolve, 2000));
-            if (selectedScenarioKey && scenarios(onSectionLinkClick)[selectedScenarioKey]) {
-                setGeneratedSteps(scenarios(onSectionLinkClick)[selectedScenarioKey]);
+            if (selectedScenarioKey && scenarios[selectedScenarioKey]) {
+                setGeneratedSteps(scenarios[selectedScenarioKey]);
             } else {
-                setGeneratedSteps({ error: "Could not find a matching demo scenario." });
+                setGeneratedSteps({ error: "Could not find demo scenario." });
             }
             setResponseGenerated(true);
             setLoading(false);
+            setActiveLoader(null);
             return;
         }
 
-        // Live AI Call
         setViewMode('live');
-        if (!apiKey || apiKey === "PASTE_YOUR_API_KEY_HERE") {
-            alert("Please provide an API key to use the live AI features.");
+        if (!apiKey || apiKey === "YOUR_API_KEY_HERE") {
+            alert("Please provide an API key.");
             setLoading(false);
+            setActiveLoader(null);
             return;
-        }
-
-        const sourceMaterials = handbookText;
-
-        const prompt = `
-            Role: You are an expert K-12 risk assessment analyst and legal advisor. Your function is to analyze a scenario and populate a JSON object based on provided source materials. Your tone is professional, clear, and authoritative. Your analysis must be robust and detailed, mirroring the complexity of a real-world legal and administrative consultation for a school leader.
-            Task: Read the User-Provided Scenario and the Source Materials. Populate a JSON object that strictly follows the provided schema.
-            CRITICAL RULES:
-            1.  Your entire response MUST be only the populated JSON object. No other text.
-            2.  For 'legalReference' in Steps 4 and 5, you MUST provide real, verifiable court cases relevant to the educational or employment context. For each case, provide the name in italics (e.g., *Tinker v. Des Moines Indep. Cmty. Sch. Dist.*) and a concise sentence explaining its relevance to the specific option being discussed. THIS IS NON-NEGOTIABLE.
-            3.  For 'suggestedLanguage' in Step 4, you MUST provide a full, robust paragraph of professional language suitable for a Head of School to use. Do not use single sentences.
-            4.  The output must be as detailed and robust as a professional consultant's report. Do not use placeholder text. Every field must be filled with comprehensive, scenario-specific information.
-            5.  When referencing a handbook policy, use the format "Section X.Y". The user interface will automatically link this text.
-            6.  **For Steps 1, 2, 3:** The 'content' MUST be an array of objects, each with a 'header' key (e.g., "Issue Type:") and a 'text' key (e.g., "Parent Complaint").
-            7.  **For Step 4 & 5:** The 'content' must be an object with keys "optionA", "optionB", "optionC". Each option must be an object with its own title and various text properties. The projected reactions in Step 5 must be nuanced and explain potential consequences.
-            8.  **For Step 6:** The 'recommendationSummary' MUST be a string formatted with bolded headers like this: "**Recommended Option:** [Option]\\n**Why:** [Explanation]\\n**Confidence Level:** [Level]\\n**Legal Review Advised:** [Yes/No and when]". The 'implementationSteps' MUST be a clear, actionable checklist as an array of strings, with each string being a complete sentence for a single step, prefixed with its number (e.g., "1. Do this first.").
-            --- START OF SOURCE MATERIALS ---
-            ${sourceMaterials}
-            --- END OF SOURCE MATERIALS ---
-            User-Provided Scenario: "${issue}"
-        `;
-
-        const responseSchema = {
-            type: "OBJECT",
-            properties: {
-                "step1": { type: "OBJECT", properties: { "title": { "type": "STRING" }, "content": { type: "ARRAY", items: { type: "OBJECT", properties: { "header": { "type": "STRING" }, "text": { "type": "STRING" } }, required: ["header", "text"] } } }, required: ["title", "content"] },
-                "step2": { type: "OBJECT", properties: { "title": { "type": "STRING" }, "content": { type: "ARRAY", items: { type: "OBJECT", properties: { "header": { "type": "STRING" }, "text": { "type": "STRING" } }, required: ["header", "text"] } } }, required: ["title", "content"] },
-                "step3": { type: "OBJECT", properties: { "title": { "type": "STRING" }, "content": { type: "ARRAY", items: { type: "OBJECT", properties: { "header": { "type": "STRING" }, "text": { "type": "STRING" } }, required: ["header", "text"] } } }, required: ["title", "content"] },
-                "step4": { 
-                    type: "OBJECT", 
-                    properties: { 
-                        "title": { "type": "STRING" }, 
-                        "content": { 
-                            type: "OBJECT",
-                            properties: {
-                                "optionA": { type: "OBJECT", properties: { "title": { "type": "STRING" }, "suggestedLanguage": { "type": "STRING" }, "policyMatch": { "type": "STRING" }, "riskScore": { "type": "STRING" }, "legalReference": { "type": "STRING" }, "recommendation": { "type": "STRING" } }, required: ["title", "suggestedLanguage", "policyMatch", "riskScore", "legalReference", "recommendation"] },
-                                "optionB": { type: "OBJECT", properties: { "title": { "type": "STRING" }, "suggestedLanguage": { "type": "STRING" }, "policyMatch": { "type": "STRING" }, "riskScore": { "type": "STRING" }, "legalReference": { "type": "STRING" }, "recommendation": { "type": "STRING" } }, required: ["title", "suggestedLanguage", "policyMatch", "riskScore", "legalReference", "recommendation"] },
-                                "optionC": { type: "OBJECT", properties: { "title": { "type": "STRING" }, "suggestedLanguage": { "type": "STRING" }, "policyMatch": { "type": "STRING" }, "riskScore": { "type": "STRING" }, "legalReference": { "type": "STRING" }, "recommendation": { "type": "STRING" } }, required: ["title", "suggestedLanguage", "policyMatch", "riskScore", "legalReference", "recommendation"] }
-                            },
-                            required: ["optionA", "optionB", "optionC"]
-                        } 
-                    },
-                    required: ["title", "content"]
-                },
-                "step5": { 
-                    type: "OBJECT", 
-                    properties: { 
-                        "title": { "type": "STRING" }, 
-                        "content": { 
-                            type: "OBJECT",
-                            properties: {
-                                "optionA": { type: "OBJECT", properties: { "title": { "type": "STRING" }, "likelyResponse": { "type": "STRING" }, "schoolRisk": { "type": "STRING" }, "legalReference": { "type": "STRING" } }, required: ["title", "likelyResponse", "schoolRisk", "legalReference"] },
-                                "optionB": { type: "OBJECT", properties: { "title": { "type": "STRING" }, "likelyResponse": { "type": "STRING" }, "schoolRisk": { "type": "STRING" }, "legalReference": { "type": "STRING" } }, required: ["title", "likelyResponse", "schoolRisk", "legalReference"] },
-                                "optionC": { type: "OBJECT", properties: { "title": { "type": "STRING" }, "likelyResponse": { "type": "STRING" }, "schoolRisk": { "type": "STRING" }, "legalReference": { "type": "STRING" } }, required: ["title", "likelyResponse", "schoolRisk", "legalReference"] }
-                            },
-                            required: ["optionA", "optionB", "optionC"]
-                        } 
-                    },
-                    required: ["title", "content"]
-                },
-                "step6": { 
-                    type: "OBJECT", 
-                    properties: { 
-                        "title": { "type": "STRING" }, 
-                        "content": { 
-                            type: "OBJECT",
-                            properties: {
-                                "recommendationSummary": { "type": "STRING" },
-                                "implementationSteps": { "type": "ARRAY", "items": { "type": "STRING" } }
-                            },
-                            required: ["recommendationSummary", "implementationSteps"]
-                        } 
-                    }, 
-                    required: ["title", "content"] 
-                }
-            },
-            required: ["step1", "step2", "step3", "step4", "step5", "step6"]
-        };
-
-        try {
-            const apiUrl = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash-latest:generateContent?key=${apiKey}`;
-            const payload = { 
-                contents: [{ role: "user", parts: [{ text: prompt }] }],
-                generationConfig: {
-                    responseMimeType: "application/json",
-                    responseSchema: responseSchema,
-                    temperature: 0.2
-                }
-            };
-
-            const response = await fetch(apiUrl, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify(payload)
-            });
-
-            if (response.status === 503) {
-                setFallbackMessage("The live AI model is temporarily unavailable. Displaying a pre-built demonstration scenario.");
-                const scenarioKey = 'parentComplaint'; // Default fallback
-                setGeneratedSteps(scenarios(onSectionLinkClick)[scenarioKey]);
-                setViewMode('demo');
-                setResponseGenerated(true);
-                return;
-            }
-
-            if (!response.ok) {
-                const errorBody = await response.json();
-                throw new Error(`API request failed: ${response.status} - ${errorBody?.error?.message || 'Unknown error'}`);
-            }
-
-            const result = await response.json();
-            if (result.candidates && result.candidates[0].content && result.candidates[0].content.parts && result.candidates[0].content.parts.length > 0) {
-                const jsonText = result.candidates[0].content.parts[0].text;
-                const parsedSteps = JSON.parse(jsonText);
-                setGeneratedSteps(parsedSteps);
-                setResponseGenerated(true);
-            } else {
-                throw new Error("Invalid response structure from API.");
-            }
-        } catch (error) {
-            console.error("Error generating AI response:", error);
-            setGeneratedSteps({ error: `Failed to generate AI response. ${error.message}. Please check your API key and network connection.` });
-            setResponseGenerated(true);
-        } finally {
-            setLoading(false);
         }
     };
 
-    // NEW: Handler for toggling steps
     const handleStepToggle = (stepKey) => {
+        const isOpening = !openSteps[stepKey];
         setOpenSteps(prev => ({ ...prev, [stepKey]: !prev[stepKey] }));
+
+        if (isOpening) {
+            setTimeout(() => {
+                stepRefs.current[stepKey]?.scrollIntoView({
+                    behavior: 'smooth',
+                    block: 'nearest',
+                });
+            }, 300);
+        }
     };
     
-    // UPDATED: Close analysis handler
     const handleCloseAnalysis = () => {
         setResponseGenerated(false);
         setGeneratedSteps(null);
         setIssue("");
         setSelectedScenarioKey(null);
         setOpenSteps({});
+        setOpenSubOptions({});
     };
 
-    // This component is used for the live AI-generated response
-    function StepCard({ title, stepKey, children, isOpen, onToggle }) {
+    const StepCard = React.memo(React.forwardRef(function StepCard({ title, stepKey, children, isOpen, onToggle, onLegalLinkClick, onSectionLinkClick, openSubOptions, onSubOptionToggle }, ref) {
         const [isAnalyzing, setIsAnalyzing] = useState(false);
 
         const handleToggle = () => {
@@ -827,18 +707,33 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
         const buttonText = isOpen ? "Close" : (isAnalyzing ? "Analyzing..." : "Analyze");
         const stepNumber = parseInt(stepKey.replace('step', ''));
 
+        const renderContent = () => {
+             return (
+                 <AIContentRenderer 
+                    content={children} 
+                    onSectionLinkClick={onSectionLinkClick} 
+                    onLegalLinkClick={onLegalLinkClick}
+                    openOptions={
+                        Object.fromEntries(
+                            Object.entries(openSubOptions)
+                            .filter(([k]) => k.startsWith(stepKey))
+                            .map(([k, v]) => [k.split('-')[1], v])
+                        )
+                    }
+                    onOptionToggle={(optionKey) => onSubOptionToggle(stepKey, optionKey)}
+                 />
+             );
+        };
+
         return (
-            <div>
-                <div
-                    className="shadow-2xl border-0 rounded-2xl"
-                    style={{ background: "#4B5C64" }}
-                >
+            <div ref={ref}>
+                <div className="shadow-2xl border-0 rounded-2xl" style={{ background: "#4B5C64" }}>
                     <div className="p-6 space-y-4 rounded-2xl" style={{ color: "#fff" }}>
                         <h2 className="text-xl font-semibold" style={{ color: "#faecc4" }}>{`Step ${stepNumber}: ${title}`}</h2>
                         
                         {isOpen && (
                              <div className="border-t border-gray-600 pt-4">
-                                 <AIContentRenderer content={children} onSectionLinkClick={onSectionLinkClick} onLegalLinkClick={handleOpenLegalJournal} />
+                                 {renderContent()}
                                  {stepKey === 'step6' && (
                                      <div className="border-t border-gray-600 mt-6 pt-6"> 
                                          <h3 className="text-lg font-semibold text-[#faecc4] mb-2 flex items-center"><Gavel className="w-5 h-5 mr-2"/>Get Direct Legal Help</h3> 
@@ -863,9 +758,8 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
                 </div>
             </div>
         );
-    }
+    }));
     
-    // Reset state when navigating away and back
     useEffect(() => {
         setIssue("");
         setResponseGenerated(false);
@@ -874,6 +768,7 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
         setViewMode('form');
         setSelectedScenarioKey(null);
         setOpenSteps({});
+        setOpenSubOptions({});
     }, []);
 
     return (
@@ -892,46 +787,36 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
                         className="w-full min-h-[140px] border-2 rounded-xl shadow-lg focus:border-blue-400 focus:ring-2 focus:ring-blue-200 transition-all duration-200 p-2 text-black"
                         style={{
                             background: "#fff",
-                            borderColor: "#ffd700",
+                            borderColor: "#fff",
                             boxShadow: "0 6px 32px 0 rgba(60,60,60,0.10), 0 1.5px 8px 0 rgba(60,60,60,0.08)"
                         }}
                         placeholder="Describe a new incident here or select a scenario above..."
                         value={issue}
                         onChange={(e) => {
                             setIssue(e.target.value);
-                            setSelectedScenarioKey(null); // Clear scenario if user types
+                            setSelectedScenarioKey(null);
                             setViewMode('live');
                         }}
                     />
-                    {/* --- Query History Dropdown Placeholder --- */}
-<div className="mt-2">
-     <label className="block font-medium text-sm mb-1">Saved Searches</label>
-     <select
-        className="w-full p-2 rounded-md text-black border-2 border-gray-300"
-        onChange={(e) => {
-            if(e.target.value) {
-                // This is where you would load the selected query
-                console.log("Selected query:", e.target.value);
-            }
-        }}
-        value=""
-     >
-        <option value="">Select a past query to load...</option>
-        <option value="Parent complaint about unfair suspension without notice">
-            Parent complaint about unfair suspension...
-        </option>
-        <option value="Non-renewed faculty member wants to use sick days as vacation before departure.">
-            Non-renewed faculty member wants to use sick days...
-        </option>
-     </select>
-</div>
+                    <div className="mt-2">
+                       <label className="block font-medium text-sm mb-1">Saved Searches</label>
+                       <select
+                         className="w-full p-2 rounded-md text-black border-2 border-gray-300"
+                         onChange={(e) => { if(e.target.value) console.log("Selected query:", e.target.value); }}
+                         value=""
+                       >
+                         <option value="">Select a past query to load...</option>
+                         <option value="Parent complaint about unfair suspension without notice">Parent complaint about unfair suspension...</option>
+                         <option value="Non-renewed faculty member wants to use sick days as vacation before departure.">Non-renewed faculty member wants to use sick days...</option>
+                       </select>
+                    </div>
 
-                    {/* --- UPDATED: Button Group --- */}
                     <div className="flex justify-center gap-4 mt-4">
                         {responseGenerated ? (
                             <button
                                 onClick={handleCloseAnalysis}
                                 className="px-6 py-2 text-lg font-semibold text-white rounded-md shadow-md bg-red-600 hover:bg-red-700"
+                                disabled={loading}
                             >
                                 Close
                             </button>
@@ -939,17 +824,17 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
                             <button
                                 onClick={() => handleGenerate(false)}
                                 disabled={loading || !issue}
-                                className={`px-6 py-2 text-lg font-semibold text-white rounded-md shadow-md transition-colors ${loading || !issue ? "bg-blue-700 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
+                                className={`px-6 py-2 text-lg font-semibold text-white rounded-md shadow-md transition-colors ${loading || !issue ? "bg-gray-500 cursor-not-allowed" : "bg-blue-600 hover:bg-blue-700"}`}
                             >
-                                {loading ? "Analyzing..." : "Analyze New Issue"}
+                                {loading && activeLoader === 'new' ? "Analyzing..." : "Analyze New Issue"}
                             </button>
                         )}
                         <button
                             onClick={() => handleGenerate(true)}
                             disabled={loading || !issue || !responseGenerated}
-                            className={`px-6 py-2 text-lg font-semibold text-white rounded-md shadow-md transition-colors ${loading || !issue || !responseGenerated ? "bg-blue-700 cursor-not-allowed" : "bg-green-600 hover:bg-green-700"}`}
+                            className={`px-6 py-2 text-lg font-semibold text-white rounded-md shadow-md transition-colors ${loading || !issue || !responseGenerated ? "bg-gray-500 cursor-not-allowed" : "bg-green-600 hover:bg-green-700"}`}
                         >
-                             {loading ? "Analyzing..." : "Update & Analyze"}
+                             {loading && activeLoader === 'update' ? "Analyzing..." : "Update & Analyze"}
                         </button>
                     </div>
                 </div>
@@ -966,18 +851,23 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
                 <div className="space-y-6">
                     {generatedSteps.error ? (
                          <div className="p-4 bg-red-100 border-l-4 border-red-500 text-red-700">
-                            <p className="font-bold">Error</p>
-                            <p>{generatedSteps.error}</p>
-                        </div>
+                             <p className="font-bold">Error</p>
+                             <p>{generatedSteps.error}</p>
+                         </div>
                     ) : (
                         Object.keys(generatedSteps).map((stepKey) => (
                             generatedSteps[stepKey] && generatedSteps[stepKey].title && (
                                 <StepCard 
+                                    ref={el => stepRefs.current[stepKey] = el}
                                     key={stepKey} 
                                     stepKey={stepKey} 
                                     title={generatedSteps[stepKey].title}
                                     isOpen={!!openSteps[stepKey]}
                                     onToggle={() => handleStepToggle(stepKey)}
+                                    onLegalLinkClick={onLegalLinkClick}
+                                    onSectionLinkClick={onSectionLinkClick}
+                                    openSubOptions={openSubOptions}
+                                    onSubOptionToggle={handleSubOptionToggle}
                                 >
                                     {generatedSteps[stepKey].content}
                                 </StepCard>
@@ -989,7 +879,7 @@ function RiskAssessmentCenter({ handbookText, apiKey, handbookSectionLanguage, o
 
 
             <ArchivedReportsCard reports={archivedReports} onViewReport={setViewedReport} />
-            {viewedReport && <ReportViewerModal report={viewedReport} scenarios={scenarios} onClose={() => setViewedReport(null)} onSectionLinkClick={onSectionLinkClick} />}
+            {viewedReport && <ReportViewerModal report={viewedReport} scenarios={scenarios} onClose={() => setViewedReport(null)} onSectionLinkClick={onSectionLinkClick} onLegalLinkClick={onLegalLinkClick} />}
         </div>
     );
 }
@@ -1008,37 +898,35 @@ function IndustryQuestionsCard() {
     ];
 
     const industryQuestions = [
-        // Human Resources
-        { id: 1, category: 'Human Resources', question: 'Has anyone hired an international teacher with U.S. work authorization?', answer: 'Solution: Schools often use H-1B visas for specialty occupations. It requires demonstrating the role needs a specific degree. Consult an immigration attorney to navigate the sponsorship process, including LCA filing and USCIS petitions.' },
-        { id: 2, category: 'Human Resources', question: 'Do you allow flexible or remote summer work for employees? Any sample policies?', answer: 'Solution: Yes, many schools offer this. A good policy defines eligibility (e.g., role, performance), expectations for availability and communication, and technology/security requirements. Specify if it\'s fully remote or hybrid.' },
-        { id: 3, category: 'Human Resources', question: 'Do you offer extended care (before/after school), and what discounts do faculty/staff receive?', answer: 'Solution: Most schools with extended care offer a significant discount (50-100%) to faculty and staff as a key benefit, though it may be a taxable fringe benefit depending on the discount amount.' },
-        { id: 4, category: 'Human Resources', question: 'Does your gift agreement include a clause allowing revocation due to a donor’s misconduct?', answer: 'Solution: Yes, this is increasingly common. A "morals clause" or "reputational harm" clause allows the school to return a gift and remove naming rights if a donor\'s actions harm the institution\'s reputation.' },
-        { id: 5, category: 'Human Resources', question: 'What’s your spending threshold for requiring Board/Finance Committee approval?', answer: 'Solution: This varies by budget size. A common model is: Head of School has discretion up to $X (e.g., $25,000), Finance Committee approval required up to $Y (e.g., $100,000), and full Board approval for anything above.' },
-        { id: 6, category: 'Human Resources', question: 'Do you have RFP or bid requirements for selecting vendors or contractors?', answer: 'Solution: A policy requiring multiple bids (e.g., three) for purchases over a certain threshold (e.g., $10,000) ensures fiscal responsibility and transparency.' },
-        { id: 7, category: 'Human Resources', question: 'Do you collect student or parent feedback in teacher evaluations?', answer: 'Solution: Yes, using confidential, structured surveys (e.g., through SurveyMonkey) can provide valuable feedback for professional growth. It should be one of multiple data points in an evaluation.' },
-        { id: 8, category: 'Human Resources', question: 'Are librarians paid on the teacher salary scale or a different structure?', answer: 'Solution: It varies. If the librarian holds a teaching degree and has instructional duties, they are often on the teacher scale. If the role is purely administrative, a separate staff scale may be used.' },
-        { id: 9, category: 'Human Resources', question: 'Does your school have ICE protocols or immigration enforcement policies?', answer: 'Solution: Schools should have a policy directing all such inquiries to the Head of School, and staff should be trained not to provide information or grant access without the Head\'s explicit permission and legal counsel\'s advice.' },
-        { id: 10, category: 'Human Resources', question: 'Can anyone share their maternity/paternity leave policies?', answer: 'Solution: A typical independent school policy offers 6-8 weeks of paid leave (often through short-term disability) and allows for the use of accrued sick/personal time. FMLA provides up to 12 weeks of unpaid, job-protected leave.' },
-        { id: 11, category: 'Human Resources', question: 'How do you handle political or cause-based student attire (e.g., BLM, Free Palestine, rainbow pins)?', answer: 'Solution: The policy should focus on disruption. If the attire does not disrupt the educational environment, it is generally protected speech. However, schools can prohibit hate speech or symbols that cause significant disruption.' },
-        { id: 12, category: 'Human Resources', question: 'How do you approach compensation when 12-month admin salaries seem lower per month than 10-month teacher salaries?', answer: 'Solution: This requires transparent communication about how salaries are calculated (e.g., daily rate vs. annual salary) and ensuring that administrative roles are benchmarked against comparable 12-month positions in the market.' },
-        // Student & Parent Handbook / Policy Questions
-        { id: 13, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'How should we handle consequences for a student caught stealing multiple valuable items, including apology expectations?', answer: 'Solution: A multi-faceted approach is best: suspension, restitution for stolen items, and a restorative justice component, such as a mediated apology to the victims to ensure it\'s sincere and educational.' },
-        { id: 14, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Does anyone have a strong school refusal policy to share?', answer: 'Solution: A strong policy involves a collaborative approach: require medical documentation for absences, create a tiered intervention plan with counselors and admin, and define when the situation becomes a truancy issue requiring state reporting.' },
-        { id: 15, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'How do you authorize host families to act as legal guardians for international students?', answer: 'Solution: This requires a formal, notarized document from the student\'s parents, often called a "Power of Attorney for Care of a Minor," granting the host family authority for medical and educational decisions.' },
-        { id: 16, category: 'Student, Parent & Faculty Handbook Policy Questions', question: "How should we approach a report that a student sent explicit images to an adult (prior to a school trip)?", answer: 'Solution: Immediate action is critical. The student should be removed from the trip pending an investigation. The school must follow its child protection policy, which includes reporting the incident to the appropriate authorities (e.g., child protective services).' },
-        { id: 17, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Do you have policy language about students distributing inappropriate photos on school devices?', answer: 'Solution: Your Acceptable Use Policy should explicitly prohibit the creation or distribution of obscene, defamatory, or inappropriate content, with clear consequences such as suspension and loss of technology privileges.' },
-        { id: 18, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Should we allow a parent-owned business to charge for services at a school event? How do we maintain fairness?', answer: 'Solution: To avoid conflicts of interest, the best practice is to have a policy that either prohibits this or requires a formal, transparent bidding process (RFP) for all vendors, regardless of their connection to the school.' },
-        { id: 19, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'What policies exist around payout or acknowledgment for long-unused sick time for administrators?', answer: 'Solution: Some schools cap the accrual of sick time. Others offer a partial payout upon retirement (e.g., a percentage of the value) or convert it to service credit for retirement benefits, but this is becoming less common.' },
-        { id: 20, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Has anyone transitioned to uniforms for Grades 1–8? Tips for change management and parent communication?', answer: 'Solution: Successful transitions involve a long lead time (12-18 months), forming a parent/faculty committee to select options, holding town halls to address concerns, and phasing in the requirement over a school year.' },
-        { id: 21, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'If a student withdraws due to medical issues and doesn’t enroll elsewhere, do we have truancy reporting obligations?', answer: 'Solution: Yes, if the student is of compulsory school age, you are likely required to report the withdrawal to the local school district to ensure the student is not considered truant. Check your state\'s specific reporting requirements.' },
-        { id: 22, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'How do you approach political or identity-related clothing that may be considered threatening or divisive?', answer: 'Solution: The policy should be viewpoint-neutral and focus on behavior and disruption. Clothing that targets individuals or groups with hate speech or incites violence can be prohibited, while general political statements are often protected.' },
-        { id: 23, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Do you allow faculty to babysit or tutor current students outside of school? What policy language do you use?', answer: 'Solution: Many schools prohibit or strongly discourage this to avoid dual-role conflicts of interest. A policy should clearly state the school\'s position and require disclosure and approval from a division head if exceptions are considered.' },
-        { id: 24, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Do you have student travel guidance for international trips, including phone security and re-entry detention protocols?', answer: 'Solution: Yes, guidance should include recommendations for using burner phones or wiping personal devices, awareness of digital surveillance in the host country, and a clear protocol for who to contact if a student is detained upon re-entry.' },
-        { id: 25, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'If summer programs are open to non-students, what forms or documents do you require at registration?', answer: 'Solution: Essential forms include an emergency contact/medical information form, liability waiver, photo/media release, and acknowledgment of key school policies (e.g., code of conduct, acceptable use).' },
-        // Governance & Board Topics
-        { id: 26, category: 'Governance and Board Topics', question: 'How do you keep former board members meaningfully engaged after their term ends?', answer: 'Solution: Create an emeritus or advisory council, invite them to special events, and keep them on targeted mailing lists. This maintains their institutional knowledge and potential for future support without blurring governance lines.' },
-        { id: 27, category: 'Governance and Board Topics', question: 'Who signs the annual tuition increase letter: Head, Board Chair, Business Officer, or someone else?', answer: 'Solution: The Board Chair should sign the letter, as setting tuition is a primary fiduciary responsibility of the Board. The Head of School may be a co-signer to show administrative support for the decision.' },
+        { id: 1, category: 'Human Resources', question: 'Has anyone hired an international teacher with U.S. work authorization?', answer: `Solution: Schools often use H-1B visas for specialty occupations. It requires demonstrating the role needs a specific degree. Consult an immigration attorney to navigate the sponsorship process, including LCA filing and USCIS petitions.` },
+        { id: 2, category: 'Human Resources', question: 'Do you allow flexible or remote summer work for employees? Any sample policies?', answer: `Solution: Yes, many schools offer this. A good policy defines eligibility (e.g., role, performance), expectations for availability and communication, and technology/security requirements. Specify if it's fully remote or hybrid.` },
+        { id: 3, category: 'Human Resources', question: 'Do you offer extended care (before/after school), and what discounts do faculty/staff receive?', answer: `Solution: Most schools with extended care offer a significant discount (50-100%) to faculty and staff as a key benefit, though it may be a taxable fringe benefit depending on the discount amount.` },
+        { id: 4, category: 'Human Resources', question: 'Does your gift agreement include a clause allowing revocation due to a donor’s misconduct?', answer: `Solution: Yes, this is increasingly common. A "morals clause" or "reputational harm" clause allows the school to return a gift and remove naming rights if a donor's actions harm the institution's reputation.` },
+        { id: 5, category: 'Human Resources', question: 'What’s your spending threshold for requiring Board/Finance Committee approval?', answer: `Solution: This varies by budget size. A common model is: Head of School has discretion up to $X (e.g., $25,000), Finance Committee approval required up to $Y (e.g., $100,000), and full Board approval for anything above.` },
+        { id: 6, category: 'Human Resources', question: 'Do you have RFP or bid requirements for selecting vendors or contractors?', answer: `Solution: A policy requiring multiple bids (e.g., three) for purchases over a certain threshold (e.g., $10,000) ensures fiscal responsibility and transparency.` },
+        { id: 7, category: 'Human Resources', question: 'Do you collect student or parent feedback in teacher evaluations?', answer: `Solution: Yes, using confidential, structured surveys (e.g., through SurveyMonkey) can provide valuable feedback for professional growth. It should be one of multiple data points in an evaluation.` },
+        { id: 8, category: 'Human Resources', question: 'Are librarians paid on the teacher salary scale or a different structure?', answer: `Solution: It varies. If the librarian holds a teaching degree and has instructional duties, they are often on the teacher scale. If the role is purely administrative, a separate staff scale may be used.` },
+        { id: 9, category: 'Human Resources', question: 'Does your school have ICE protocols or immigration enforcement policies?', answer: `Solution: Schools should have a policy directing all such inquiries to the Head of School, and staff should be trained not to provide information or grant access without the Head's explicit permission and legal counsel's advice.` },
+        { id: 10, category: 'Human Resources', question: 'Can anyone share their maternity/paternity leave policies?', answer: `Solution: A typical independent school policy offers 6-8 weeks of paid leave (often through short-term disability) and allows for the use of accrued sick/personal time. FMLA provides up to 12 weeks of unpaid, job-protected leave.` },
+        { id: 11, category: 'Human Resources', question: 'How do you handle political or cause-based student attire (e.g., BLM, Free Palestine, rainbow pins)?', answer: `Solution: The policy should focus on disruption. If the attire does not disrupt the educational environment, it is generally protected speech. However, schools can prohibit hate speech or symbols that cause significant disruption.` },
+        { id: 12, category: 'Human Resources', question: 'How do you approach compensation when 12-month admin salaries seem lower per month than 10-month teacher salaries?', answer: `Solution: This requires transparent communication about how salaries are calculated (e.g., daily rate vs. annual salary) and ensuring that administrative roles are benchmarked against comparable 12-month positions in the market.` },
+        { id: 13, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'How should we handle consequences for a student caught stealing multiple valuable items, including apology expectations?', answer: `Solution: A multi-faceted approach is best: suspension, restitution for stolen items, and a restorative justice component, such as a mediated apology to the victims to ensure it's sincere and educational.` },
+        { id: 14, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Does anyone have a strong school refusal policy to share?', answer: `Solution: A strong policy involves a collaborative approach: require medical documentation for absences, create a tiered intervention plan with counselors and admin, and define when the situation becomes a truancy issue requiring state reporting.` },
+        { id: 15, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'How do you authorize host families to act as legal guardians for international students?', answer: `Solution: This requires a formal, notarized document from the student's parents, often called a "Power of Attorney for Care of a Minor," granting the host family authority for medical and educational decisions.` },
+        { id: 16, category: 'Student, Parent & Faculty Handbook Policy Questions', question: "How should we approach a report that a student sent explicit images to an adult (prior to a school trip)?", answer: `Solution: Immediate action is critical. The student should be removed from the trip pending an investigation. The school must follow its child protection policy, which includes reporting the incident to the appropriate authorities (e.g., child protective services).` },
+        { id: 17, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Do you have policy language about students distributing inappropriate photos on school devices?', answer: `Solution: Your Acceptable Use Policy should explicitly prohibit the creation or distribution of obscene, defamatory, or inappropriate content, with clear consequences such as suspension and loss of technology privileges.` },
+        { id: 18, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Should we allow a parent-owned business to charge for services at a school event? How do we maintain fairness?', answer: `Solution: To avoid conflicts of interest, the best practice is to have a policy that either prohibits this or requires a formal, transparent bidding process (RFP) for all vendors, regardless of their connection to the school.` },
+        { id: 19, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'What policies exist around payout or acknowledgment for long-unused sick time for administrators?', answer: `Solution: Some schools cap the accrual of sick time. Others offer a partial payout upon retirement (e.g., a percentage of the value) or convert it to service credit for retirement benefits, but this is becoming less common.` },
+        { id: 20, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Has anyone transitioned to uniforms for Grades 1–8? Tips for change management and parent communication?', answer: `Solution: Successful transitions involve a long lead time (12-18 months), forming a parent/faculty committee to select options, holding town halls to address concerns, and phasing in the requirement over a school year.` },
+        { id: 21, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'If a student withdraws due to medical issues and doesn’t enroll elsewhere, do we have truancy reporting obligations?', answer: `Solution: Yes, if the student is of compulsory school age, you are likely required to report the withdrawal to the local school district to ensure the student is not considered truant. Check your state's specific reporting requirements.` },
+        { id: 22, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'How do you approach political or identity-related clothing that may be considered threatening or divisive?', answer: `Solution: The policy should be viewpoint-neutral and focus on behavior and disruption. Clothing that targets individuals or groups with hate speech or incites violence can be prohibited, while general political statements are often protected.` },
+        { id: 23, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Do you allow faculty to babysit or tutor current students outside of school? What policy language do you use?', answer: `Solution: Many schools prohibit or strongly discourage this to avoid dual-role conflicts of interest. A policy should clearly state the school's position and require disclosure and approval from a division head if exceptions are considered.` },
+        { id: 24, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'Do you have student travel guidance for international trips, including phone security and re-entry detention protocols?', answer: `Solution: Yes, guidance should include recommendations for using burner phones or wiping personal devices, awareness of digital surveillance in the host country, and a clear protocol for who to contact if a student is detained upon re-entry.` },
+        { id: 25, category: 'Student, Parent & Faculty Handbook Policy Questions', question: 'If summer programs are open to non-students, what forms or documents do you require at registration?', answer: `Solution: Essential forms include an emergency contact/medical information form, liability waiver, photo/media release, and acknowledgment of key school policies (e.g., code of conduct, acceptable use).` },
+        { id: 26, category: 'Governance and Board Topics', question: 'How do you keep former board members meaningfully engaged after their term ends?', answer: `Solution: Create an emeritus or advisory council, invite them to special events, and keep them on targeted mailing lists. This maintains their institutional knowledge and potential for future support without blurring governance lines.` },
+        { id: 27, category: 'Governance and Board Topics', question: 'Who signs the annual tuition increase letter: Head, Board Chair, Business Officer, or someone else?', answer: `Solution: The Board Chair should sign the letter, as setting tuition is a primary fiduciary responsibility of the Board. The Head of School may be a co-signer to show administrative support for the decision.` },
     ];
+
 
     const handleAnalyze = (id) => {
         if (revealedAnswers[id]) {
@@ -1130,6 +1018,26 @@ function HighlightedText({ text, highlight }) {
 
 
 // --- Main Dashboard Component ---
+const handbookSectionLanguage = {
+    "1. Introduction": `1.1 Welcome\nAs a member of the faculty and staff of TS (“TS”), employees are a vital part of this educational community, the purpose of which is to help young people achieve their full potential as students and citizens. We hope and expect that employees’ participation in this endeavor will be a rich and rewarding experience and will help the school set the highest standards for personal and professional lives that help promote the school’s mission. \n\n1.2 Purpose of Employee Handbook\nThe purpose of this employee handbook is to provide employees with a general guide to policies, practices, and benefits at TS. If used in conjunction with the Student/Parent Handbook, it will answer some of the more common questions that arise. This handbook is general in nature and not intended to be comprehensive or to address all of the possible applications of, or exceptions to, the general policies and procedures described. TS reserves the right to modify, supplement, or rescind from time to time any of the policies, practices, and benefits described in this handbook as it deems appropriate in TS’s sole discretion with or without notice. Where applicable, the benefit plan documents will govern the administration of TS benefits.\n\nThis employee handbook is not an express or implied contract for employment or any purpose, and nothing contained in this handbook is intended or should be construed as a guarantee of employment or any benefit for any period of time. Except for those faculty and administrators employed pursuant to individual written employment contracts, employment at TS is “at-will,” which means that employment is not for a fixed term and may be terminated by TS or the employee at any time for any reason with or without notice.\n\nAfter reading these policies, any questions should be directed to your supervisor or the Director of Finance. TS employees are expected to follow all TS policies and guidelines. As set forth in more detail herein, failure to comply with the policies set forth in this handbook may result in disciplinary action, up to and including termination of employment. Nothing in this employee handbook is intended to result in non-compliance with applicable laws or regulations. If there is a conflict between this Handbook and any federal, state, or local law or regulation, the law or regulation will govern.`,
+    "2. Equal Employment Opportunity Policies and Procedures": `2.1 Equal Employment Opportunity \nTS provides equal employment opportunity to all students, employees and applicants without regard to race, color, religion, sex, age, national origin, sexual orientation, disability, veteran status, family medical history, genetic information or any other legally protected category. This policy governs all student-related decisions and employment decisions, including recruitment, hiring, job assignment, compensation, training, promotion, discipline, transfer, leave-of-absence, access to benefits, layoff, recall, termination and other personnel matters. All student-related and employment-related decisions are based solely upon legitimate, non-discriminatory factors.\n\n2.2 Employment Eligibility \nIn compliance with the Immigration Reform and Control Act of 1986 (“IRCA”) TS is required to verify employment eligibility for each employee hired. New employees must present documentation within three days of hire proving identity and eligibility for employment as required by IRCA. TS will employ only persons who are authorized to work in the United States. Each employee is required to complete an Employment Eligibility Verification Form (Form I-9).\n\n2.3 Americans with Disabilities Act Policy \nTS complies with the Americans with Disabilities Act (“ADA”), as amended by the ADA Amendments Act (“ADAAA”), and all applicable state and local fair employment practices laws, and is committed to providing equal employment opportunities to qualified individuals with disabilities. Consistent with this commitment, TS will provide a reasonable accommodation to disabled applicants and employees if the reasonable accommodation would allow the individual to perform the essential functions of the job, unless doing so would create undue hardship. \n\n2.4 Non-Discrimination and Harassment \nTS is committed to providing a school environment that is free from all forms of discrimination and harassment. Harassment consists of unwelcome conduct, whether verbal, physical or visual, that is based upon or derisive of a person’s race, color, religion, sex, age, national origin, sexual orientation, disability, veteran status, family medical history, genetic information or other legally protected characteristics or conduct, where the unwelcome conduct affects tangible job benefits, unreasonably interferes with an individual’s work performance, or creates an intimidating, hostile, or offensive working environment. All employees have a personal responsibility to keep the work place free of any such harassment.`,
+    "3. The Employment Relationship": `3.1 Employment Contracts\nNo representative of TS other than the Head of School has the authority to enter into any employment contract on behalf of TS. Many employees employed by TS as faculty or administrators are employed pursuant to individual employment contracts. All such contracts are in writing and are individual contracts between TS and a particular employee. Renewal of such contracts is at the discretion of TS and typically depends on a variety of factors, including but not limited to, evaluation of performance by a supervisor. Any employee employed by TS who is not a party to such a written contract is employed ‘at will’.\n\n3.2 Background Checks\nThe administration of TS recognizes the importance of maintaining a safe workplace with honest, trustworthy, qualified, reliable and non-violent employees who do not present a risk of serious harm to students, co-employees or others. For the benefit of all employees, the school, and its students, in furthering these interests and enforcing TS’s policies, applicants who have received a conditional offer of employment at TS are required to authorize TS to obtain various background checks in accordance with Indiana law. \n\n3.3 Growth and Evaluation\nTS believes in professional growth, constructive feedback, and positive reinforcement for all of its employees. Supervisors and employees are encouraged to discuss job performance and goals on an ongoing basis. Throughout the year, employees are involved with their supervisors in assessing performance and progress. The cadence of self-assessment will be determined by the direct supervisor.\n\n3.4 Disciplinary Action Policy \nEmployees of TS are expected to perform to the best of their abilities and follow all TS policies and procedures at all times. Failure to adhere to established policies and procedures or other misconduct will result in disciplinary action, up to and including termination of employment. \n\n3.5 Open Door Policy \nIt is the desire of TS to provide good working conditions and maintain harmonious working relationships among employees, as well as between employees and management. In order to correct any work-related problems, management must be informed about them. Therefore, TS has an “open door” problem solving policy. \n\n3.6 Search Policy \nTS holds the highest regard for the students’ interest and your interest in maintaining the privacy of various personal information and materials. For that reason, it is important for you to understand that all items on TS’s property are subject to inspection at any time. \n\n3.7 Whistleblower Policy\nTS is committed to maintaining the highest standards of conduct and ethical behavior and promotes a working environment that values respect, fairness, and integrity. In keeping with this commitment, TS will investigate any suspected fraudulent or dishonest use or misuse of TS’s resources or property by employees, board members, consultants or volunteers.\n\n3.8 Confidentiality \nAll records and information relating to TS employees, its students, or parents are confidential and employees must, therefore, treat all matters accordingly. No the school or the school-related information, including without limitation, documents, notes, files, records, oral information, computer files, or similar materials (except in the ordinary course of performing duties on behalf of the school) may be removed from the school’s premises without permission from TS.\n\n3.9 Document Destruction \nThe Sarbanes-Oxley Act was signed into law on July 30, 2002, and was designed to add new governance standards for the corporate sector to rebuild public trust in publicly held companies. While the majority of this act deals directly with for profit corporations, non-profit corporations must comply with the document destruction policy.`,
+    "4. Compensation Policies": `4.1 Employment Classifications\nAll employees matter greatly and there is no intent to declare hierarchies as to value. However, TS must provide basic definitions and categories in order to comply with applicable laws. \n\nMost faculty members are 10-month employees while most non-instructional staff members are 12-month employees, depending on the requirements of their position. Faculty and staff members can also be further classified as exempt or non-exempt, part-time, full time, seasonal or temporary (see below for definition of categories). TS will conduct all compensation practices in compliance with the Fair Labor Standards Act. \n\n4.2 Record of Time Worked\nTS compensates employees for all time worked. All non-exempt employees, including hourly and non-exempt salaried employees, are required to accurately record all time worked (regardless of the location where the work occurs). \n\n4.3 Separation from Employment\nTermination of employment is an inevitable part of personnel activity within any organization, and many of the reasons for termination are routine. Below are examples of some of the most common circumstances under which employment is terminated: \nRESIGNATION: \t Voluntary employment termination initiated by an employee. \n\nDISCHARGE: \t\t Involuntary employment termination initiated by the organization. \n\nRETIREMENT: \t\t Voluntary employment termination initiated by the employee meeting \nage, length of service, and other criteria for retirement from the organization. \n\n4.4 Reference Requests\nAny request for references for a present or former employee should be discussed with the Head of School. This policy does not preclude the use of employee information by the school itself in connection with its own operating needs or the release of such information to government agencies and other appropriate circumstances. \n\n4.5 Payroll Information \nEmployees are paid bi-weekly on every other Friday by direct deposit. The school requires direct deposit of your bi-weekly paycheck into a checking and/or savings account. Biweekly pay details are accessed via an on-line program through the school’s payroll provider.`,
+    "5. Employee Benefit Programs": `5.1 Benefit Eligibility\nTS offers a variety of benefit programs to eligible employees, many of which are generally described below. Every effort has been made to ensure the accuracy of the benefits information in this handbook. However, if any inconsistency exists between this handbook and the written plans, policies, or contracts, the actual provisions of each benefit plan will govern. TS reserves the right to amend or terminate any of its benefit plans at any time, in whole or in part, for any reason. \n\n5.2 Summary of Employee Benefits\nGroup Health Insurance, Employer Matching Retirement Plan, Flexible Spending Benefits/Pre-Tax Reimbursements, Life Insurance, Early Retirement Health Benefits, Continuation of Benefits (COBRA), Worker’s Compensation, Unemployment Compensation, Tuition Payments via Payroll Deduction, Advanced Degree Reimbursement.\n\n5.3 Financial Assistance for Faculty/Staff Tuition and Fees\nTuition Remission, Financial Tuition Assistance, Faculty/Student Trips, Faculty/Staff Extended Day Care Services.\n\n5.4 Holidays\nTS observes the following holidays: New Year’s Day, Martin Luther King, Jr. Birthday, Good Friday (p.m.), Memorial Day, Fourth of July, Labor Day, Wednesday before Thanksgiving, Thanksgiving, Friday after Thanksgiving, Christmas Eve, Christmas Day, New Year’s Eve. \n\n5.5 Remote Work\nRemote work is neither a benefit nor an entitlement and in no way changes the terms and conditions of employment. The employee remains obligated to comply with all School rules, policies, practices, and instructions that would apply if the employee were working at the regular School worksite. \n\n5.6 Vacation Time (Non-Instructional Employees Only)\nTwelve month, full-time employees are allowed two weeks paid vacation per year following one year of service from hire date. After 10 years of employment, vacation time is increased to three weeks per year. Non-instructional staff members who work less than twelve months are not entitled to paid vacation.`,
+    "6. Code of Conduct": `6.1 Employee Code of Business Conduct and Ethics\nThe School has adopted this Code of Business Conduct and Ethics (the “Code”) applicable to all employees. It is intended to work in conjunction with the Policy on Conflicts of Interest signed by senior administrators, key employees and members of the Board of Trustees (the “Conflict of Interest Policy”). To the extent there is any conflict between the Conflict of Interest Policy and the Code, the Conflict of Interest Policy shall control. \n\n6.2 Employee Dress Code\nIn order to create and maintain an environment as conducive as possible to the attainment of the educational objectives of the school, all employees shall adhere to a reasonable standard of dress and personal grooming. Employees are expected to present a professional image in appearance and dress at all times while performing TS business. \n\n6.3 Student - Employee Relationship \nAs employees of an educational institution, faculty and staff are held to a higher standard by parents, students, colleagues, and members of the public. The school supports and endorses a strict policy of respect toward students and expects employees to act at all times as adult role models. \n\n6.4 Smoking and Drugs\nTS is a smoke-free, tobacco-free environment. This applies to everyone – students, administrators, faculty, staff, contractors, vendors, service personnel, and guests. TS prohibits the use of all tobacco products, including smokeless tobacco and “vapor” devices, on campus and in school vehicles with no exceptions. \n\n6.5 Violence Free Workplace\nTS prohibits possession of guns, firearms, knives, archery-type devices, stun guns, objects capable of firing a projectile, or martial arts devices on TS’s property, including the school’s parking lot.`,
+};
+
+const findSectionByNumber = (numberStr) => {
+    if (!numberStr) return null;
+    const mainSectionNumber = numberStr.split('.')[0];
+    const sectionTitle = Object.keys(handbookSectionLanguage).find(key => key.startsWith(mainSectionNumber + '.'));
+    
+    if (sectionTitle) {
+        return { title: sectionTitle, content: handbookSectionLanguage[sectionTitle] };
+    }
+    return null;
+};
+
 export default function App() {
     const [page, setPage] = useState("dashboard");
     const [showSuggestionModal, setShowSuggestionModal] = useState(false);
@@ -1137,8 +1045,8 @@ export default function App() {
     const suggestionSectionRef = useRef("");
     const [selectedSection, setSelectedSection] = useState("1. Introduction");
     const [isSectionLanguageOpen, setIsSectionLanguageOpen] = useState(false);
-    const [modalSection, setModalSection] = useState(null); // NEW state for the section modal
-    const [queryHistory, setQueryHistory] = useState([]); // NEW: Lifted state for persistent history
+    const [modalSection, setModalSection] = useState(null);
+    const [queryHistory, setQueryHistory] = useState([]);
     const [db, setDb] = useState(null);
     const [userId, setUserId] = useState(null);
 
@@ -1154,32 +1062,40 @@ export default function App() {
     const [submittedLegalQuestion, setSubmittedLegalQuestion] = useState(null);
     const [legalAnswer, setLegalAnswer] = useState(null);
 
-    // --- New State for Handbook Topic Search ---
+    // Handbook Topic Search State
     const [handbookTopicQuery, setHandbookTopicQuery] = useState("");
     const [handbookTopicResults, setHandbookTopicResults] = useState(null);
     const [isAnalyzingTopic, setIsAnalyzingTopic] = useState(false);
     
+    // Modal State
     const [legalJournalQuery, setLegalJournalQuery] = useState("");
     const [isLegalJournalOpen, setIsLegalJournalOpen] = useState(false);
 
-    const handleOpenLegalJournal = (caseName) => {
+    const handleOpenLegalJournal = useCallback((caseName) => {
         setLegalJournalQuery(caseName);
         setIsLegalJournalOpen(true);
-    };
+    }, []);
+
+    const handleSectionLinkClick = useCallback((sectionNumber) => {
+        const sectionData = findSectionByNumber(sectionNumber);
+        if (sectionData) {
+            setModalSection(sectionData);
+        } else {
+            console.warn(`Could not find handbook section for number: ${sectionNumber}`);
+        }
+    }, []);
 
     const handleCloseLegalJournal = () => {
         setIsLegalJournalOpen(false);
         setLegalJournalQuery("");
     };
     
-    // --- NEW: Firebase Setup and Query History Persistence ---
+    // Firebase Setup (Temporarily disabled as requested)
+    /*
     useEffect(() => {
         try {
             const firebaseConfig = JSON.parse(window.__firebase_config || '{}');
-            if (!firebaseConfig.apiKey) {
-                console.error("Firebase config is missing or invalid.");
-                return;
-            }
+            if (!firebaseConfig.apiKey) return;
             const app = initializeApp(firebaseConfig);
             const firestoreDb = getFirestore(app);
             const firebaseAuth = getAuth(app);
@@ -1198,15 +1114,11 @@ export default function App() {
                             const userCredential = await signInAnonymously(firebaseAuth);
                             setUserId(userCredential.user.uid);
                         }
-                    } catch (error) {
-                        console.error("Error signing in:", error);
-                    }
+                    } catch (error) { console.error("Error signing in:", error); }
                 }
             });
             return () => unsubscribeAuth();
-        } catch (e) {
-            console.error("Firebase config not found or invalid. Persistence will be disabled.", e);
-        }
+        } catch (e) { console.error("Firebase config error.", e); }
     }, []);
 
     useEffect(() => {
@@ -1216,25 +1128,22 @@ export default function App() {
             
             const unsubscribe = onSnapshot(q, (querySnapshot) => {
                 const history = [];
-                querySnapshot.forEach((doc) => {
-                    history.push(doc.data().text);
-                });
+                querySnapshot.forEach((doc) => { history.push(doc.data().text); });
                 
                 const archivedIssues = [
                     "Parent complaint about unfair suspension without notice",
                     "Non-renewed faculty member wants to use sick days as vacation before departure."
                 ];
-                const combinedHistory = [...archivedIssues, ...history];
-                const uniqueHistory = [...new Set(combinedHistory)];
-
-                setQueryHistory(uniqueHistory);
+                const combinedHistory = [...new Set([...archivedIssues, ...history])];
+                setQueryHistory(combinedHistory);
             });
 
             return () => unsubscribe();
         }
     }, [db, userId]);
+    */
 
-    // --- Data and Constants ---
+    // Data and Constants
     const SIDEBAR_LINKS = [
         { key: "dashboard", label: "Dashboard", icon: <Shield className="w-5 h-5" /> },
         { key: "risk", label: "IQ Risk Assessment Center", icon: <AlertCircle className="w-5 h-5" /> },
@@ -1248,7 +1157,6 @@ export default function App() {
 
     const SCHOOL_LOGO = "https://i.ytimg.com/vi/wNI9LjpwVDU/maxresdefault.jpg";
 
-    // --- UPDATED: Alerts and Trends with AI-identified items and live links ---
     const alerts = [
         { text: "New Dept. of Ed guidance on 'Equitable Services' for private schools under Title I.", date: "2025-08-21", link: "https://www.ed.gov/about/news/press-release/us-department-of-education-issues-equitable-service-school-choice-guidance" },
         { text: "Federal tax credit scholarship program passes Senate, impacting school choice funding.", date: "2025-07-01", link: "https://www.the74million.org/article/big-tax-bill-passes-senate-with-less-beautiful-plan-for-national-school-choice/" },
@@ -1262,37 +1170,6 @@ export default function App() {
         { text: "State law on faculty licensure changed", date: "2025-07-17", hasButton: true },
         { text: "Cyberbullying legislation signed", date: "2025-07-13" },
     ];
-
-    const handbookSectionLanguage = {
-        "1. Introduction": `1.1 Welcome\nAs a member of the faculty and staff of TS (“TS”), employees are a vital part of this educational community, the purpose of which is to help young people achieve their full potential as students and citizens. We hope and expect that employees’ participation in this endeavor will be a rich and rewarding experience and will help the school set the highest standards for personal and professional lives that help promote the school’s mission. \n\n1.2 Purpose of Employee Handbook\nThe purpose of this employee handbook is to provide employees with a general guide to policies, practices, and benefits at TS. If used in conjunction with the Student/Parent Handbook, it will answer some of the more common questions that arise. This handbook is general in nature and not intended to be comprehensive or to address all of the possible applications of, or exceptions to, the general policies and procedures described. TS reserves the right to modify, supplement, or rescind from time to time any of the policies, practices, and benefits described in this handbook as it deems appropriate in TS’s sole discretion with or without notice. Where applicable, the benefit plan documents will govern the administration of TS benefits.\n\nThis employee handbook is not an express or implied contract for employment or any purpose, and nothing contained in this handbook is intended or should be construed as a guarantee of employment or any benefit for any period of time. Except for those faculty and administrators employed pursuant to individual written employment contracts, employment at TS is “at-will,” which means that employment is not for a fixed term and may be terminated by TS or the employee at any time for any reason with or without notice.\n\nAfter reading these policies, any questions should be directed to your supervisor or the Director of Finance. TS employees are expected to follow all TS policies and guidelines. As set forth in more detail herein, failure to comply with the policies set forth in this handbook may result in disciplinary action, up to and including termination of employment. Nothing in this employee handbook is intended to result in non-compliance with applicable laws or regulations. If there is a conflict between this Handbook and any federal, state, or local law or regulation, the law or regulation will govern.`,
-        "2. Equal Employment Opportunity Policies and Procedures": `2.1 Equal Employment Opportunity \nTS provides equal employment opportunity to all students, employees and applicants without regard to race, color, religion, sex, age, national origin, sexual orientation, disability, veteran status, family medical history, genetic information or any other legally protected category. This policy governs all student-related decisions and employment decisions, including recruitment, hiring, job assignment, compensation, training, promotion, discipline, transfer, leave-of-absence, access to benefits, layoff, recall, termination and other personnel matters. All student-related and employment-related decisions are based solely upon legitimate, non-discriminatory factors.\n\n2.2 Employment Eligibility \nIn compliance with the Immigration Reform and Control Act of 1986 (“IRCA”) TS is required to verify employment eligibility for each employee hired. New employees must present documentation within three days of hire proving identity and eligibility for employment as required by IRCA. TS will employ only persons who are authorized to work in the United States. Each employee is required to complete an Employment Eligibility Verification Form (Form I-9).\n\n2.3 Americans with Disabilities Act Policy \nTS complies with the Americans with Disabilities Act (“ADA”), as amended by the ADA Amendments Act (“ADAAA”), and all applicable state and local fair employment practices laws, and is committed to providing equal employment opportunities to qualified individuals with disabilities. Consistent with this commitment, TS will provide a reasonable accommodation to disabled applicants and employees if the reasonable accommodation would allow the individual to perform the essential functions of the job, unless doing so would create undue hardship. \n\n2.4 Non-Discrimination and Harassment \nTS is committed to providing a school environment that is free from all forms of discrimination and harassment. Harassment consists of unwelcome conduct, whether verbal, physical or visual, that is based upon or derisive of a person’s race, color, religion, sex, age, national origin, sexual orientation, disability, veteran status, family medical history, genetic information or other legally protected characteristics or conduct, where the unwelcome conduct affects tangible job benefits, unreasonably interferes with an individual’s work performance, or creates an intimidating, hostile, or offensive working environment. All employees have a personal responsibility to keep the work place free of any such harassment.`,
-        "3. The Employment Relationship": `3.1 Employment Contracts\nNo representative of TS other than the Head of School has the authority to enter into any employment contract on behalf of TS. Many employees employed by TS as faculty or administrators are employed pursuant to individual employment contracts. All such contracts are in writing and are individual contracts between TS and a particular employee. Renewal of such contracts is at the discretion of TS and typically depends on a variety of factors, including but not limited to, evaluation of performance by a supervisor. Any employee employed by TS who is not a party to such a written contract is employed ‘at will’.\n\n3.2 Background Checks\nThe administration of TS recognizes the importance of maintaining a safe workplace with honest, trustworthy, qualified, reliable and non-violent employees who do not present a risk of serious harm to students, co-employees or others. For the benefit of all employees, the school, and its students, in furthering these interests and enforcing TS’s policies, applicants who have received a conditional offer of employment at TS are required to authorize TS to obtain various background checks in accordance with Indiana law. \n\n3.3 Growth and Evaluation\nTS believes in professional growth, constructive feedback, and positive reinforcement for all of its employees. Supervisors and employees are encouraged to discuss job performance and goals on an ongoing basis. Throughout the year, employees are involved with their supervisors in assessing performance and progress. The cadence of self-assessment will be determined by the direct supervisor.\n\n3.4 Disciplinary Action Policy \nEmployees of TS are expected to perform to the best of their abilities and follow all TS policies and procedures at all times. Failure to adhere to established policies and procedures or other misconduct will result in disciplinary action, up to and including termination of employment. \n\n3.5 Open Door Policy \nIt is the desire of TS to provide good working conditions and maintain harmonious working relationships among employees, as well as between employees and management. In order to correct any work-related problems, management must be informed about them. Therefore, TS has an “open door” problem solving policy. \n\n3.6 Search Policy \nTS holds the highest regard for the students’ interest and your interest in maintaining the privacy of various personal information and materials. For that reason, it is important for you to understand that all items on TS’s property are subject to inspection at any time. \n\n3.7 Whistleblower Policy\nTS is committed to maintaining the highest standards of conduct and ethical behavior and promotes a working environment that values respect, fairness, and integrity. In keeping with this commitment, TS will investigate any suspected fraudulent or dishonest use or misuse of TS’s resources or property by employees, board members, consultants or volunteers.\n\n3.8 Confidentiality \nAll records and information relating to TS employees, its students, or parents are confidential and employees must, therefore, treat all matters accordingly. No the school or the school-related information, including without limitation, documents, notes, files, records, oral information, computer files, or similar materials (except in the ordinary course of performing duties on behalf of the school) may be removed from the school’s premises without permission from TS.\n\n3.9 Document Destruction \nThe Sarbanes-Oxley Act was signed into law on July 30, 2002, and was designed to add new governance standards for the corporate sector to rebuild public trust in publicly held companies. While the majority of this act deals directly with for profit corporations, non-profit corporations must comply with the document destruction policy.`,
-        "4. Compensation Policies": `4.1 Employment Classifications\nAll employees matter greatly and there is no intent to declare hierarchies as to value. However, TS must provide basic definitions and categories in order to comply with applicable laws. \n\nMost faculty members are 10-month employees while most non-instructional staff members are 12-month employees, depending on the requirements of their position. Faculty and staff members can also be further classified as exempt or non-exempt, part-time, full time, seasonal or temporary (see below for definition of categories). TS will conduct all compensation practices in compliance with the Fair Labor Standards Act. \n\n4.2 Record of Time Worked\nTS compensates employees for all time worked. All non-exempt employees, including hourly and non-exempt salaried employees, are required to accurately record all time worked (regardless of the location where the work occurs). \n\n4.3 Separation from Employment\nTermination of employment is an inevitable part of personnel activity within any organization, and many of the reasons for termination are routine. Below are examples of some of the most common circumstances under which employment is terminated: \nRESIGNATION: \t Voluntary employment termination initiated by an employee. \n\nDISCHARGE: \t\t Involuntary employment termination initiated by the organization. \n\nRETIREMENT: \t\t Voluntary employment termination initiated by the employee meeting \nage, length of service, and other criteria for retirement from the organization. \n\n4.4 Reference Requests\nAny request for references for a present or former employee should be discussed with the Head of School. This policy does not preclude the use of employee information by the school itself in connection with its own operating needs or the release of such information to government agencies and other appropriate circumstances. \n\n4.5 Payroll Information \nEmployees are paid bi-weekly on every other Friday by direct deposit. The school requires direct deposit of your bi-weekly paycheck into a checking and/or savings account. Biweekly pay details are accessed via an on-line program through the school’s payroll provider.`,
-        "5. Employee Benefit Programs": `5.1 Benefit Eligibility\nTS offers a variety of benefit programs to eligible employees, many of which are generally described below. Every effort has been made to ensure the accuracy of the benefits information in this handbook. However, if any inconsistency exists between this handbook and the written plans, policies, or contracts, the actual provisions of each benefit plan will govern. TS reserves the right to amend or terminate any of its benefit plans at any time, in whole or in part, for any reason. \n\n5.2 Summary of Employee Benefits\nGroup Health Insurance, Employer Matching Retirement Plan, Flexible Spending Benefits/Pre-Tax Reimbursements, Life Insurance, Early Retirement Health Benefits, Continuation of Benefits (COBRA), Worker’s Compensation, Unemployment Compensation, Tuition Payments via Payroll Deduction, Advanced Degree Reimbursement.\n\n5.3 Financial Assistance for Faculty/Staff Tuition and Fees\nTuition Remission, Financial Tuition Assistance, Faculty/Student Trips, Faculty/Staff Extended Day Care Services.\n\n5.4 Holidays\nTS observes the following holidays: New Year’s Day, Martin Luther King, Jr. Birthday, Good Friday (p.m.), Memorial Day, Fourth of July, Labor Day, Wednesday before Thanksgiving, Thanksgiving, Friday after Thanksgiving, Christmas Eve, Christmas Day, New Year’s Eve. \n\n5.5 Remote Work\nRemote work is neither a benefit nor an entitlement and in no way changes the terms and conditions of employment. The employee remains obligated to comply with all School rules, policies, practices, and instructions that would apply if the employee were working at the regular School worksite. \n\n5.6 Vacation Time (Non-Instructional Employees Only)\nTwelve month, full-time employees are allowed two weeks paid vacation per year following one year of service from hire date. After 10 years of employment, vacation time is increased to three weeks per year. Non-instructional staff members who work less than twelve months are not entitled to paid vacation.`,
-        "6. Code of Conduct": `6.1 Employee Code of Business Conduct and Ethics\nThe School has adopted this Code of Business Conduct and Ethics (the “Code”) applicable to all employees. It is intended to work in conjunction with the Policy on Conflicts of Interest signed by senior administrators, key employees and members of the Board of Trustees (the “Conflict of Interest Policy”). To the extent there is any conflict between the Conflict of Interest Policy and the Code, the Conflict of Interest Policy shall control. \n\n6.2 Employee Dress Code\nIn order to create and maintain an environment as conducive as possible to the attainment of the educational objectives of the school, all employees shall adhere to a reasonable standard of dress and personal grooming. Employees are expected to present a professional image in appearance and dress at all times while performing TS business. \n\n6.3 Student - Employee Relationship \nAs employees of an educational institution, faculty and staff are held to a higher standard by parents, students, colleagues, and members of the public. The school supports and endorses a strict policy of respect toward students and expects employees to act at all times as adult role models. \n\n6.4 Smoking and Drugs\nTS is a smoke-free, tobacco-free environment. This applies to everyone – students, administrators, faculty, staff, contractors, vendors, service personnel, and guests. TS prohibits the use of all tobacco products, including smokeless tobacco and “vapor” devices, on campus and in school vehicles with no exceptions. \n\n6.5 Violence Free Workplace\nTS prohibits possession of guns, firearms, knives, archery-type devices, stun guns, objects capable of firing a projectile, or martial arts devices on TS’s property, including the school’s parking lot.`,
-    };
-    
-    // --- NEW: Helper function to find a handbook section by its number (e.g., "3.2") ---
-    const findSectionByNumber = (numberStr) => {
-        if (!numberStr) return null;
-        const mainSectionNumber = numberStr.split('.')[0];
-        const sectionTitle = Object.keys(handbookSectionLanguage).find(key => key.startsWith(mainSectionNumber + '.'));
-        
-        if (sectionTitle) {
-            return { title: sectionTitle, content: handbookSectionLanguage[sectionTitle] };
-        }
-        return null;
-    };
-
-    // --- NEW: Handler to open the section modal ---
-    const handleSectionLinkClick = (sectionNumber) => {
-        const sectionData = findSectionByNumber(sectionNumber);
-        if (sectionData) {
-            setModalSection(sectionData);
-        } else {
-            console.warn(`Could not find handbook section for number: ${sectionNumber}`);
-        }
-    };
 
     const handbookSections = (onSectionLinkClick) => [
         { section: "1. Introduction", vulnerabilities: [{ text: "The 'at-will' statement is present but could be more prominent to ensure it's not missed.", source: "Legal Best Practice", date: "2025-08-20" }] },
@@ -1318,7 +1195,6 @@ export default function App() {
         return d.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
     }
 
-    // --- Modal Handler ---
     const handleShowSuggestion = (item) => {
         const suggestionMap = {
             "New law on volunteer screening": <span>Update <SectionLink number="3.2" onLinkClick={handleSectionLinkClick} /> (Background Checks) to incorporate new state requirements for volunteer screening procedures, including frequency and scope of checks.</span>,
@@ -1541,7 +1417,7 @@ Question: "${questionText}"`;
                         <div className="mb-2">
                             <button className="text-lg font-bold cursor-pointer focus:outline-none" style={{ color: "#faecc4" }} onClick={() => setIsSectionLanguageOpen(open => !open)}>
                             {selectedSection.split('. ').slice(1).join('. ')}
-                            </button>                                
+                            </button>                                        
                             <span className="ml-2 text-xs" style={{ color: "#fff" }}>(Click to show/hide full Handbook Section language)</span>
                         </div>
                         {isSectionLanguageOpen && (
@@ -1638,10 +1514,10 @@ Question: "${questionText}"`;
             <div className="shadow-2xl border-0 rounded-2xl" style={{ background: "#4B5C64", color: "#fff" }}>
                 <div className="p-6">
                     <SectionHeader icon={<Bell className="text-[#faecc4]" size={26} />} title="IQ Alerts" />
-                       <div className="mb-6 text-white space-y-4">
-                            <p><strong>Below are current alerts gathered from several direct resources.</strong></p>
-                            <p><strong>Click the View Source button for direct links to relevant subject matter.</strong></p>
-                        </div>
+                           <div className="mb-6 text-white space-y-4">
+                                <p><strong>Below are current alerts gathered from several direct resources.</strong></p>
+                                <p><strong>Click the View Source button for direct links to relevant subject matter.</strong></p>
+                            </div>
                     <div className="max-h-96 overflow-y-scroll pr-2">
                         {alerts.map((a, i) => (
                             <React.Fragment key={i}>
@@ -1687,37 +1563,37 @@ Question: "${questionText}"`;
                         <p><strong>Below are current industry trends and legislation articles and information gathered from several direct resources.</strong></p>
                         <p><strong>Click the View Source button for direct links to relevant subject matter.</strong></p>
                     </div>
-                       <div className="max-h-96 overflow-y-scroll pr-2">
-                        {trends.map((t, i) => (
-                            <React.Fragment key={i}>
-                                <div className="p-2 rounded-lg hover:bg-gray-700 transition-colors">
-                                    <p>{t.text} <span className="text-sm text-gray-400">- {formatDate(t.date)}</span></p>
-                                    <div className="flex justify-start mt-2">
-                                        {t.link && (
-                                            <a
-                                                href={t.link}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
-                                                className="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-4 py-1 rounded-lg text-xs flex items-center gap-1"
-                                            >
-                                                <ExternalLink size={12} />
-                                                View Source
-                                            </a>
-                                        )}
-                                        {t.hasButton && (
-                                            <button
-                                                className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-1 rounded-lg text-xs"
-                                                onClick={() => handleShowSuggestion(t)}
-                                            >
-                                                Handbook Consideration
-                                            </button>
-                                        )}
+                           <div className="max-h-96 overflow-y-scroll pr-2">
+                            {trends.map((t, i) => (
+                                <React.Fragment key={i}>
+                                    <div className="p-2 rounded-lg hover:bg-gray-700 transition-colors">
+                                        <p>{t.text} <span className="text-sm text-gray-400">- {formatDate(t.date)}</span></p>
+                                        <div className="flex justify-start mt-2">
+                                            {t.link && (
+                                                <a
+                                                    href={t.link}
+                                                    target="_blank"
+                                                    rel="noopener noreferrer"
+                                                    className="bg-purple-600 hover:bg-purple-700 text-white font-semibold px-4 py-1 rounded-lg text-xs flex items-center gap-1"
+                                                >
+                                                    <ExternalLink size={12} />
+                                                    View Source
+                                                </a>
+                                            )}
+                                            {t.hasButton && (
+                                                <button
+                                                    className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-4 py-1 rounded-lg text-xs"
+                                                    onClick={() => handleShowSuggestion(t)}
+                                                >
+                                                    Handbook Consideration
+                                                </button>
+                                            )}
+                                        </div>
                                     </div>
-                                </div>
-                                {i < trends.length - 1 && <hr className="border-gray-600 my-1" />}
-                            </React.Fragment>
-                        ))}
-                    </div>
+                                    {i < trends.length - 1 && <hr className="border-gray-600 my-1" />}
+                                </React.Fragment>
+                            ))}
+                        </div>
                 </div>
             </div>
         </div>
@@ -1728,10 +1604,10 @@ Question: "${questionText}"`;
             <div className="shadow-2xl border-0 rounded-2xl" style={{ background: "#4B5C64", color: "#fff" }}>
                 <div className="p-6">
                     <SectionHeader icon={<MessageCircle className="text-[#faecc4]" size={26} />} title="IQ School Leaders Q&A" />
-                       <div className="mb-6 text-white font-bold space-y-2">
-                            <p>Below you can ask specific questions by selecting a topic or generating your own question.</p>
-                            <p>The system is connected to various leading edge LLM knowledge base networks and resources related to the industry that will generate answers immediately.</p>
-                        </div>
+                           <div className="mb-6 text-white font-bold space-y-2">
+                                <p>Below you can ask specific questions by selecting a topic or generating your own question.</p>
+                                <p>The system is connected to various leading edge LLM knowledge base networks and resources related to the industry that will generate answers immediately.</p>
+                            </div>
                     <div className="mb-4 flex flex-wrap gap-2">
                         {hosQaTopics.map((topic) => (
                             <button
@@ -1861,12 +1737,14 @@ Question: "${questionText}"`;
         </div>
     );
 
-    // --- NEW: Calendar Page Component ---
     const CALENDAR = () => {
-        const [currentDate, setCurrentDate] = useState(new Date());
+        const [currentDate, setCurrentDate] = useState(new Date(2025, 7, 1)); 
         const [events, setEvents] = useState([
-            { date: '2025-09-15', title: 'Board of Trustees Meeting' },
-            { date: '2025-10-20', title: 'NAIS Annual Conference' }
+            { date: '2025-08-09', title: 'Head of School - Town Hall' },
+            { date: '2025-08-11', title: 'FMLA Guidance webinar' },
+            { date: '2025-08-15', title: 'Board of Trustees Meeting' },
+            { date: '2025-08-25', title: 'ADA Legal Guidance webinar' },
+            { date: '2025-10-20', title: 'NAIS Annual Conference' } 
         ]);
         const [showEventModal, setShowEventModal] = useState(false);
         const [selectedDate, setSelectedDate] = useState(null);
@@ -1907,13 +1785,13 @@ Question: "${questionText}"`;
                 days.push(
                     <div
                         key={i}
-                        className="border border-gray-200 p-2 cursor-pointer hover:bg-blue-50 flex flex-col"
+                        className="border border-gray-200 p-2 cursor-pointer hover:bg-blue-50 flex flex-col min-h-[120px]"
                         onClick={() => handleDayClick(i)}
                     >
                         <div className="font-bold">{i}</div>
-                        <div className="mt-1 space-y-1 overflow-y-auto">
+                        <div className="mt-1 space-y-1 flex-grow">
                             {dayEvents.map((event, idx) => (
-                                <div key={idx} className="bg-blue-500 text-white text-xs rounded px-1 py-0.5">
+                                <div key={idx} className="bg-blue-500 text-white text-xs rounded px-2 py-1 whitespace-normal">
                                     {event.title}
                                 </div>
                             ))}
@@ -1925,7 +1803,7 @@ Question: "${questionText}"`;
         };
 
         return (
-            <div className="max-w-4xl mx-auto">
+            <div className="max-w-6xl mx-auto">
                  <h1 className="text-3xl font-bold text-center mb-6">Calendar of Important Events, Conferences & Meetings</h1>
                  <div className="bg-white p-6 rounded-2xl shadow-2xl">
                     <div className="flex justify-between items-center mb-4">
@@ -1936,27 +1814,27 @@ Question: "${questionText}"`;
                     <div className="grid grid-cols-7 text-center font-bold text-gray-600">
                         {['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map(day => <div key={day} className="py-2">{day}</div>)}
                     </div>
-                    <div className="grid grid-cols-7 grid-rows-5 h-[600px]">
+                    <div className="grid grid-cols-7 auto-rows-fr">
                         {renderCalendar()}
                     </div>
                  </div>
                  {showEventModal && (
-                     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
-                         <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-sm w-full">
-                            <h3 className="text-xl font-bold mb-4">Add Event for {new Date(selectedDate + 'T00:00:00').toLocaleDateString()}</h3>
-                            <input
-                                type="text"
-                                value={newEventTitle}
-                                onChange={(e) => setNewEventTitle(e.target.value)}
-                                placeholder="Event Title"
-                                className="w-full p-2 border rounded-md mb-4"
-                            />
-                            <div className="flex justify-end gap-2">
-                                <button className="rounded-lg px-4 py-2 border" onClick={() => setShowEventModal(false)}>Cancel</button>
-                                <button className="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg" onClick={handleSaveEvent}>Save Event</button>
-                            </div>
-                         </div>
-                     </div>
+                      <div className="fixed inset-0 z-50 flex items-center justify-center bg-black bg-opacity-40">
+                          <div className="bg-white p-6 rounded-2xl shadow-2xl max-w-sm w-full">
+                              <h3 className="text-xl font-bold mb-4">Add Event for {new Date(selectedDate + 'T00:00:00').toLocaleDateString()}</h3>
+                              <input
+                                  type="text"
+                                  value={newEventTitle}
+                                  onChange={(e) => setNewEventTitle(e.target.value)}
+                                  placeholder="Event Title"
+                                  className="w-full p-2 border rounded-md mb-4"
+                              />
+                              <div className="flex justify-end gap-2">
+                                  <button className="rounded-lg px-4 py-2 border" onClick={() => setShowEventModal(false)}>Cancel</button>
+                                  <button className="bg-blue-600 text-white font-semibold px-4 py-2 rounded-lg" onClick={handleSaveEvent}>Save Event</button>
+                              </div>
+                          </div>
+                      </div>
                  )}
             </div>
         );
@@ -2023,7 +1901,7 @@ Question: "${questionText}"`;
 
                 <main className="flex-1 p-10 overflow-y-auto bg-gray-100">
                     {page === "dashboard" && DASHBOARD}
-                    {page === "risk" && <RiskAssessmentCenter handbookText={fullHandbookText} apiKey={GEMINI_API_KEY} handbookSectionLanguage={handbookSectionLanguage} onSectionLinkClick={handleSectionLinkClick} queryHistory={queryHistory} setQueryHistory={setQueryHistory} db={db} userId={userId} />}
+                    {page === "risk" && <RiskAssessmentCenter handbookText={fullHandbookText} apiKey={GEMINI_API_KEY} handbookSectionLanguage={handbookSectionLanguage} onSectionLinkClick={handleSectionLinkClick} onLegalLinkClick={handleOpenLegalJournal} queryHistory={queryHistory} setQueryHistory={setQueryHistory} db={db} userId={userId} />}
                     {page === "handbook" && HANDBOOK}
                     {page === "calendar" && <CALENDAR />}
                     {page === "alerts" && ALERTS}
@@ -2061,4 +1939,3 @@ Question: "${questionText}"`;
         </div>
     );
 }
-       
